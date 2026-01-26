@@ -1,0 +1,18 @@
+<div id="legal-container">
+  <h2>AL CIELO - TÉRMINOS Y CONDICIONES</h2>
+  <p>Yo, como ciudadano/residente en USA, asumo total responsabilidad legal por el uso de este software. 
+     Entiendo que May Roga LLC solo provee la herramienta en territorio americano y no tiene control 
+     sobre su uso final. El servicio es intransferible.</p>
+  <label><input type="checkbox" id="check-legal"> ACEPTO LA RESPONSABILIDAD TOTAL</label>
+  <button onclick="activarServicio()">ACTIVAR MAPA OFFLINE</button>
+</div>
+
+<script>
+async function activarServicio() {
+  if(!document.getElementById('check-legal').checked) {
+    alert("Debe firmar el blindaje legal para continuar.");
+    return;
+  }
+  // Lógica para enviar device_id y link_id al servidor de Render
+}
+</script>
