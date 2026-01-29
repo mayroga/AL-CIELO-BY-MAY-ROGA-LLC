@@ -56,10 +56,11 @@ def admin_panel():
                 <input type="password" name="password" required><br><br>
                 <label>Plan de Servicio:</label><br>
                 <select name="plan">
-                    <option value="1">TEST – 24h (GRATIS)</option>
-                    <option value="10">10 Días ($15)</option>
-                    <option value="28">28 Días ($25)</option>
-                </select><br><br>
+    <option value="30">TEST INTERNO – 30 DÍAS (SOLO ADMIN)</option>
+    <option value="1">TEST – 24h (GRATIS)</option>
+    <option value="10">10 Días ($15)</option>
+    <option value="28">28 Días ($25)</option>
+</select><br><br>
                 <button type="submit" style="width:100%; padding:10px; background:black; color:white; border:none; border-radius:5px;">GENERAR ACCESO</button>
             </form>
         </div>
