@@ -1,7 +1,7 @@
 import os
 import uuid
 import stripe
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, redirect
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
@@ -21,7 +21,7 @@ db_stripe_links = {}  # checkout_session_id -> link_id
 
 # ================== PLANES ==================
 PLANES = {
-    "bJe8wOaof8dR7sXaPF7Vm0k": 10,  # $0.50 / 10 días (solo admin/test)
+    "bJe8wOaof8dR7sXaPF7Vm0k": 10,  # $0.50 / 10 días (admin/test)
     "dRm6oG8g7cu76oT1f57Vm0i": 10,  # $15 / 10 días
     "14A3cudArfGj9B51f57Vm0j": 28   # $25 / 28 días
 }
@@ -31,7 +31,12 @@ PLANES = {
 def home():
     return """
     <h2>AL CIELO by May Roga LLC</h2>
-    <p>Compra tu acceso y recibe automáticamente tu link de activación.</p>
+    <p>Compra tu acceso con Stripe y recibe automáticamente tu link de activación.</p>
+    <ul>
+      <li><a href="https://buy.stripe.com/bJe8wOaof8dR7sXaPF7Vm0k">Test $0.50 / 10 días</a></li>
+      <li><a href="https://buy.stripe.com/dRm6oG8g7cu76oT1f57Vm0i">$15 / 10 días</a></li>
+      <li><a href="https://buy.stripe.com/14A3cudArfGj9B51f57Vm0j">$25 / 28 días</a></li>
+    </ul>
     """
 
 # ================== STRIPE WEBHOOK ==================
@@ -58,7 +63,6 @@ def stripe_webhook():
             if key in checkout_url:
                 plan_dias = dias
                 break
-
         if not plan_dias:
             plan_dias = 10  # fallback
 
@@ -76,7 +80,22 @@ def stripe_webhook():
 
         print("✅ LICENCIA CREADA:", link_id)
 
+        # =====================================
+        # AUTOENTREGA: Redirige al usuario al link de activación
+        # =====================================
+        # Nota: Stripe no redirige automáticamente al frontend con POST, pero si quieres
+        # que el usuario reciba link inmediato, puedes usar un endpoint extra
+        # para consultar el link con session_id.
     return jsonify({"status": "ok"}), 200
+
+# ================== CONSULTA LINK DE ACTIVACIÓN ==================
+@app.route("/link/<session_id>")
+def get_link(session_id):
+    """El usuario accede con el session_id que Stripe le devuelve al finalizar compra"""
+    if session_id not in db_stripe_links:
+        return "Session no válida o licencia aún no creada", 404
+    link_id = db_stripe_links[session_id]
+    return redirect(f"{BASE_URL}/activar/{link_id}")
 
 # ================== ACTIVACIÓN ==================
 @app.route("/activar/<link_id>", methods=["GET", "POST"])
@@ -132,7 +151,7 @@ def activar(link_id):
           });
           const data = await res.json();
           if(res.ok){
-            alert("✅ Link de activación listo. Descargando mapa...");
+            alert("✅ Mapa activado. Se descargará automáticamente...");
             window.location.href = data.map_url;
           } else {
             alert(data.error);
