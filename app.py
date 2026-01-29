@@ -9,21 +9,19 @@ app = Flask(__name__)
 # ================== ENV ==================
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-
 ADMIN_USER = os.getenv("ADMIN_USERNAME")
 ADMIN_PASS = os.getenv("ADMIN_PASSWORD")
-
 BASE_URL = "https://al-cielo-by-may-roga-llc.onrender.com"
 
 stripe.api_key = STRIPE_SECRET_KEY
 
 # ================== DB EN MEMORIA ==================
-db_licencias = {}   # link_id -> datos licencia
+db_licencias = {}  # link_id -> datos licencia
 db_stripe_links = {}  # checkout_session_id -> link_id
 
-# ================== MAPEO DE TUS LINKS ==================
+# ================== PLANES ==================
 PLANES = {
-    "bJe8wOaof8dR7sXaPF7Vm0k": 10,  # $0.50 / 10 días (TUYO)
+    "bJe8wOaof8dR7sXaPF7Vm0k": 10,  # $0.50 / 10 días (solo admin/test)
     "dRm6oG8g7cu76oT1f57Vm0i": 10,  # $15 / 10 días
     "14A3cudArfGj9B51f57Vm0j": 28   # $25 / 28 días
 }
@@ -33,7 +31,7 @@ PLANES = {
 def home():
     return """
     <h2>AL CIELO by May Roga LLC</h2>
-    <p>Si compraste el servicio, revisa tu correo o espera la activación automática.</p>
+    <p>Compra tu acceso y recibe automáticamente tu link de activación.</p>
     """
 
 # ================== STRIPE WEBHOOK ==================
@@ -49,12 +47,10 @@ def stripe_webhook():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-    # ---- PAGO COMPLETADO ----
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-
-        checkout_url = session.get("url", "")
         session_id = session.get("id")
+        checkout_url = session.get("url", "")
 
         # Detectar plan por URL
         plan_dias = None
@@ -64,7 +60,7 @@ def stripe_webhook():
                 break
 
         if not plan_dias:
-            return jsonify({"error": "Plan no reconocido"}), 400
+            plan_dias = 10  # fallback
 
         # Crear licencia
         link_id = str(uuid.uuid4())[:8]
@@ -136,6 +132,7 @@ def activar(link_id):
           });
           const data = await res.json();
           if(res.ok){
+            alert("✅ Link de activación listo. Descargando mapa...");
             window.location.href = data.map_url;
           } else {
             alert(data.error);
