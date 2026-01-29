@@ -1,18 +1,61 @@
 <div id="legal-container">
-  <h2>AL CIELO - TÉRMINOS Y CONDICIONES</h2>
-  <p>Yo, como ciudadano/residente en USA, asumo total responsabilidad legal por el uso de este software. 
-     Entiendo que May Roga LLC solo provee la herramienta en territorio americano y no tiene control 
-     sobre su uso final. El servicio es intransferible.</p>
-  <label><input type="checkbox" id="check-legal"> ACEPTO LA RESPONSABILIDAD TOTAL</label>
-  <button onclick="activarServicio()">ACTIVAR MAPA OFFLINE</button>
+  <h2>AL CIELO – TÉRMINOS Y CONDICIONES</h2>
+
+  <p>
+    Declaro bajo mi responsabilidad que soy ciudadano o residente legal en los
+    Estados Unidos y que cumpliré con todas las leyes aplicables.
+  </p>
+
+  <p>
+    <strong>Descarga de mapas:</strong><br>
+    Los mapas utilizados por la aplicación son almacenados localmente en el dispositivo
+    y el acceso está limitado a 2 dispositivos por licencia. Solo un dispositivo puede
+    estar activo a la vez. La redistribución está prohibida.
+  </p>
+
+  <p>
+    May Roga LLC no se hace responsable por el uso del software en países sancionados
+    por los Estados Unidos ni por usos no autorizados.
+  </p>
+
+  <label>
+    <input type="checkbox" id="check-legal">
+    Acepto la responsabilidad total y las condiciones de uso
+  </label>
+
+  <br><br>
+  <button onclick="activarServicio()">ACTIVAR SERVICIO</button>
 </div>
 
 <script>
 async function activarServicio() {
   if(!document.getElementById('check-legal').checked) {
-    alert("Debe firmar el blindaje legal para continuar.");
+    alert("Debe aceptar el blindaje legal para continuar.");
     return;
   }
-  // Lógica para enviar device_id y link_id al servidor de Render
+
+  const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
+  localStorage.setItem("device_id", device_id);
+
+  const link_id = window.location.pathname.split("/").pop();
+
+  const res = await fetch(`/activar/${link_id}`, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      device_id: device_id,
+      legal_ok: true
+    })
+  });
+
+  const data = await res.json();
+
+  if(res.ok){
+    alert("Licencia activada! Descargando mapa...");
+    // Aquí podrías iniciar la descarga del mapa usando data.map_url
+    window.location.href = data.map_url; // descarga directa
+  } else {
+    alert(data.error || "Error al activar licencia");
+  }
 }
 </script>
