@@ -1,43 +1,74 @@
 import os
 import uuid
-from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template_string
 import stripe
+from flask import Flask, request, jsonify, render_template_string
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# ---------------- CONFIGURACIÓN ----------------
-ADMIN_USER = os.getenv('ADMIN_USERNAME')
-ADMIN_PASS = os.getenv('ADMIN_PASSWORD')
+# ================== ENV ==================
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+ADMIN_USER = os.getenv("ADMIN_USERNAME")
+ADMIN_PASS = os.getenv("ADMIN_PASSWORD")
+
 BASE_URL = "https://al-cielo-by-may-roga-llc.onrender.com"
 
-# Stripe
-STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
 stripe.api_key = STRIPE_SECRET_KEY
 
-# BASE DE DATOS EN MEMORIA
-db_licencias = {}
+# ================== DB EN MEMORIA ==================
+db_licencias = {}   # link_id -> datos licencia
+db_stripe_links = {}  # checkout_session_id -> link_id
 
-# ---------------- PANEL ADMIN ----------------
-@app.route('/admin/generar', methods=['GET', 'POST'])
-def admin_panel():
-    if request.method == 'POST':
-        user = request.form.get('username')
-        password = request.form.get('password')
-        plan = request.form.get('plan')
+# ================== MAPEO DE TUS LINKS ==================
+PLANES = {
+    "bJe8wOaof8dR7sXaPF7Vm0k": 10,  # $0.50 / 10 días (TUYO)
+    "dRm6oG8g7cu76oT1f57Vm0i": 10,  # $15 / 10 días
+    "14A3cudArfGj9B51f57Vm0j": 28   # $25 / 28 días
+}
 
-        if user != ADMIN_USER or password != ADMIN_PASS:
-            return "Acceso Denegado: Credenciales Incorrectas", 403
+# ================== ROOT ==================
+@app.route("/")
+def home():
+    return """
+    <h2>AL CIELO by May Roga LLC</h2>
+    <p>Si compraste el servicio, revisa tu correo o espera la activación automática.</p>
+    """
 
+# ================== STRIPE WEBHOOK ==================
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.data
+    sig_header = request.headers.get("Stripe-Signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    # ---- PAGO COMPLETADO ----
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+
+        checkout_url = session.get("url", "")
+        session_id = session.get("id")
+
+        # Detectar plan por URL
+        plan_dias = None
+        for key, dias in PLANES.items():
+            if key in checkout_url:
+                plan_dias = dias
+                break
+
+        if not plan_dias:
+            return jsonify({"error": "Plan no reconocido"}), 400
+
+        # Crear licencia
         link_id = str(uuid.uuid4())[:8]
-
-        # Plan 30 días para testing interno
-        if plan == "30":
-            dias = 30
-        else:
-            dias = int(plan)
-
-        expiracion = datetime.now() + timedelta(days=dias)
+        expiracion = datetime.now() + timedelta(days=plan_dias)
 
         db_licencias[link_id] = {
             "devices": [],
@@ -45,129 +76,75 @@ def admin_panel():
             "expira": expiracion.strftime("%Y-%m-%d %H:%M:%S")
         }
 
-        return f"""
-            <div style="font-family:sans-serif; text-align:center; padding:20px;">
-                <h2 style="color:green;">Link Generado con Éxito</h2>
-                <p>Copia y envía este link al usuario:</p>
-                <div style="background:#eee; padding:10px; border-radius:5px; font-weight:bold;">
-                    {BASE_URL}/activar/{link_id}
-                </div>
-                <br><a href='/admin/generar'>Crear otro link</a>
-            </div>
-        """
+        db_stripe_links[session_id] = link_id
 
-    return f"""
-        <div style="font-family:sans-serif; text-align:center; padding-top:50px;">
-            <img src="{BASE_URL}/static/logo.png" width="100">
-            <h2>AL CIELO - Panel de Control</h2>
-            <form method="post" style="display:inline-block; text-align:left; border:1px solid #ccc; padding:20px; border-radius:10px;">
-                <label>Usuario:</label><br>
-                <input type="text" name="username" required><br><br>
-                <label>Contraseña:</label><br>
-                <input type="password" name="password" required><br><br>
-                <label>Plan de Servicio:</label><br>
-                <select name="plan">
-                    <option value="30">TEST INTERNO – 30 DÍAS (SOLO ADMIN)</option>
-                    <option value="1">TEST – 24h (GRATIS)</option>
-                    <option value="10">10 Días ($0.50)</option>
-                    <option value="10">10 Días ($15)</option>
-                    <option value="28">28 Días ($25)</option>
-                </select><br><br>
-                <button type="submit" style="width:100%; padding:10px; background:black; color:white; border:none; border-radius:5px;">GENERAR ACCESO</button>
-            </form>
-        </div>
-    """
+        print("✅ LICENCIA CREADA:", link_id)
 
-# ---------------- ACTIVACIÓN LICENCIA ----------------
-@app.route('/activar/<link_id>', methods=['GET', 'POST'])
+    return jsonify({"status": "ok"}), 200
+
+# ================== ACTIVACIÓN ==================
+@app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
     if link_id not in db_licencias:
-        return "Link no válido o vencido.", 404
+        return "Licencia no válida o vencida.", 404
 
-    licencia = db_licencias[link_id]
+    lic = db_licencias[link_id]
 
-    if request.method == 'POST':
+    if request.method == "POST":
         data = request.json
         device_id = data.get("device_id")
         legal_ok = data.get("legal_ok")
 
         if not legal_ok:
-            return jsonify({"error": "Debe aceptar los términos legales"}), 403
+            return jsonify({"error": "Debe aceptar términos legales"}), 403
 
-        # Registrar dispositivo (máximo 2)
-        if device_id not in licencia["devices"]:
-            if len(licencia["devices"]) < 2:
-                licencia["devices"].append(device_id)
-            else:
-                return jsonify({"error": "Licencia activada en 2 dispositivos. Compre otra licencia."}), 403
+        if device_id not in lic["devices"]:
+            if len(lic["devices"]) >= 2:
+                return jsonify({"error": "Límite de dispositivos alcanzado"}), 403
+            lic["devices"].append(device_id)
 
-        # Activar solo un device a la vez
-        licencia["active_device"] = device_id
+        lic["active_device"] = device_id
 
         return jsonify({
             "status": "OK",
-            "message": "Licencia activada correctamente",
-            "expira": licencia["expira"],
+            "expira": lic["expira"],
             "map_url": f"{BASE_URL}/static/maps/cuba_full.mbtiles"
         })
 
-    # GET → mostrar info básica y aviso legal
     return render_template_string("""
-        <h1>Bienvenido a AL CIELO</h1>
+        <h2>AL CIELO – Activación</h2>
         <p>Licencia válida hasta: {{expira}}</p>
-        <p>Esta licencia se puede activar en máximo 2 dispositivos, pero solo uno funcionará a la vez.</p>
-    """, expira=licencia["expira"])
+        <p>Máx. 2 dispositivos · Solo 1 activo</p>
+        <label>
+          <input type="checkbox" id="legal"> Acepto términos legales
+        </label><br><br>
+        <button onclick="activar()">Activar</button>
 
-# ---------------- STRIPE WEBHOOK ----------------
-@app.route('/stripe/webhook', methods=['POST'])
-def stripe_webhook():
-    payload = request.data
-    sig_header = request.headers.get('stripe-signature')
-    endpoint_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
+        <script>
+        async function activar(){
+          if(!document.getElementById("legal").checked){
+            alert("Debe aceptar los términos");
+            return;
+          }
+          const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
+          localStorage.setItem("device_id", device_id);
 
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, endpoint_secret
-        )
-    except Exception as e:
-        return str(e), 400
-
-    # Solo interesan pagos exitosos
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-
-        # Obtenemos email o metadata si quieres
-        customer_email = session.get('customer_email', 'unknown')
-
-        # Generamos link_id automático
-        link_id = str(uuid.uuid4())[:8]
-
-        # Definir duración según producto comprado
-        amount = session['amount_total']  # en centavos
-        if amount == 50:       # $0.50 → 10 días
-            dias = 10
-        elif amount == 1500:   # $15 → 10 días
-            dias = 10
-        elif amount == 2500:   # $25 → 28 días
-            dias = 28
-        else:
-            dias = 10  # default
-
-        expiracion = datetime.now() + timedelta(days=dias)
-
-        # Crear licencia en memoria
-        db_licencias[link_id] = {
-            "devices": [],
-            "active_device": None,
-            "expira": expiracion.strftime("%Y-%m-%d %H:%M:%S")
+          const res = await fetch("", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({device_id:device_id, legal_ok:true})
+          });
+          const data = await res.json();
+          if(res.ok){
+            window.location.href = data.map_url;
+          } else {
+            alert(data.error);
+          }
         }
+        </script>
+    """, expira=lic["expira"])
 
-        # Aquí podrías enviar correo al cliente con link de activación
-        print(f"Licencia generada para {customer_email}: {BASE_URL}/activar/{link_id}")
-
-    return '', 200
-
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+# ================== RUN ==================
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
