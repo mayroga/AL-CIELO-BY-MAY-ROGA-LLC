@@ -1,42 +1,42 @@
+#!/usr/bin/env python3
 import os
 from pathlib import Path
-import requests
+import urllib.request
+import stat
 
 # ================= CONFIG =================
 MAPS_DIR = Path("static/maps")
 MAP_FILE = MAPS_DIR / "cuba_full.mbtiles"
-MAP_URL = "https://download.geofabrik.de/central-america/cuba-latest.osm.pbf"  # Fuente de datos OSM
 
-# ================= CREAR CARPETA =================
-MAPS_DIR.mkdir(parents=True, exist_ok=True)
-print(f"✅ Carpeta {MAPS_DIR} creada o ya existe.")
+# URL de descarga del .mbtiles (ajustar según tu fuente)
+MBTILES_URL = "https://tu-servidor.com/cuba_full.mbtiles"
 
-# ================= DESCARGA DEL ARCHIVO =================
-if not MAP_FILE.exists():
-    print("⬇️ Descargando archivo de mapas...")
-    
-    # Descarga del PBF
-    pbf_file = MAPS_DIR / "cuba-latest.osm.pbf"
-    with requests.get(MAP_URL, stream=True) as r:
-        r.raise_for_status()
-        with open(pbf_file, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-    print(f"✅ Archivo PBF descargado en {pbf_file}")
+# ================== FUNCIONES ==================
+def ensure_maps_dir():
+    if not MAPS_DIR.exists():
+        MAPS_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"✅ Carpeta {MAPS_DIR} creada.")
+    else:
+        print(f"✅ Carpeta {MAPS_DIR} ya existe.")
 
-    # ================= CONVERTIR A MBTILES =================
-    print("⚙️ Convirtiendo a MBTiles...")
-    os.system(f"osmtogo {pbf_file} --output={MAP_FILE}")
+def download_mbtiles():
+    if MAP_FILE.exists():
+        print(f"✅ Archivo {MAP_FILE} ya existe, no se descarga.")
+        return
+    print(f"⬇️ Descargando {MAP_FILE.name} ...")
+    urllib.request.urlretrieve(MBTILES_URL, MAP_FILE)
+    print(f"✅ Descarga completada: {MAP_FILE}")
 
-    # ================= LIMPIEZA =================
-    pbf_file.unlink()
-    print(f"✅ Conversión completada. Archivo listo en {MAP_FILE}")
+def set_permissions():
+    # Lectura para todos, escritura solo propietario
+    MAP_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+    print(f"🔒 Permisos ajustados para {MAP_FILE}")
 
-else:
-    print(f"✅ Archivo {MAP_FILE} ya existe, no es necesario descargar.")
+def main():
+    ensure_maps_dir()
+    download_mbtiles()
+    set_permissions()
+    print(f"🎯 {MAP_FILE} listo y accesible desde Flask en /static/maps/")
 
-# ================= VERIFICAR ACCESIBILIDAD =================
-if MAP_FILE.exists() and MAP_FILE.stat().st_size > 0:
-    print(f"✅ {MAP_FILE} listo y accesible desde Flask en /static/maps/")
-else:
-    print("❌ Error: el archivo MBTiles no se creó correctamente.")
+if __name__ == "__main__":
+    main()
