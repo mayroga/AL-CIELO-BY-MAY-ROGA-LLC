@@ -1,5 +1,4 @@
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 
 DB_PATH = Path("data.db")
@@ -34,7 +33,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Crear licencia
 def create_license(link_id, session_id, expires_at):
     conn = get_conn()
     cur = conn.cursor()
@@ -45,7 +43,6 @@ def create_license(link_id, session_id, expires_at):
     conn.commit()
     conn.close()
 
-# Obtener licencia por link_id
 def get_license_by_link(link_id):
     conn = get_conn()
     cur = conn.cursor()
@@ -54,7 +51,6 @@ def get_license_by_link(link_id):
     conn.close()
     return row
 
-# Obtener licencia por session_id
 def get_license_by_session(session_id):
     conn = get_conn()
     cur = conn.cursor()
@@ -63,7 +59,6 @@ def get_license_by_session(session_id):
     conn.close()
     return row[0] if row else None
 
-# Obtener dispositivos asociados a una licencia
 def get_devices(link_id):
     conn = get_conn()
     cur = conn.cursor()
@@ -72,7 +67,6 @@ def get_devices(link_id):
     conn.close()
     return [r[0] for r in rows]
 
-# Agregar dispositivo
 def add_device(link_id, device_id):
     conn = get_conn()
     cur = conn.cursor()
@@ -83,7 +77,6 @@ def add_device(link_id, device_id):
     conn.commit()
     conn.close()
 
-# Establecer dispositivo activo
 def set_active_device(link_id, device_id):
     conn = get_conn()
     cur = conn.cursor()
