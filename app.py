@@ -23,15 +23,17 @@ PLANES = {
 
 @app.route("/")
 def home():
-    html = """<body style='font-family:sans-serif;text-align:center;'><h2>AL CIELO by May Roga LLC</h2><ul>"""
+    html = """<h2>AL CIELO by May Roga LLC</h2><ul>"""
     for price_id, (precio, dias, desc) in PLANES.items():
         html += f'<li><a href="/checkout/{price_id}">{desc} – ${precio} / {dias} días</a></li>'
-    html += "</ul></body>"
+    html += "</ul>"
     return html
 
 @app.route("/checkout/<price_id>")
 def checkout(price_id):
     if price_id not in PLANES: return "Error", 404
+   
+    # BYPASS PARA ADMIN (Acceso Directo)
     if price_id == "price_1Sv6H2BOA5mT4t0PppizlRAK":
         link_id = str(uuid.uuid4())[:8]
         expira = (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S")
@@ -50,105 +52,108 @@ def checkout(price_id):
 @app.route("/success")
 def success():
     session_id = request.args.get("session_id")
-    time.sleep(8) 
+    # Espera 10-15s para que el sistema cree la licencia
+    time.sleep(12)
     return redirect(f"/link/{session_id}")
 
 @app.route("/link/<session_id>")
 def link_redirect(session_id):
     link_id = get_license_by_session(session_id)
-    if not link_id: return "Procesando... Refresca en 5 segundos.", 404
+    if not link_id:
+        return "Confirmando pago con Stripe... Refresca en 5 segundos.", 404
     return redirect(f"/activar/{link_id}")
 
 @app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
     lic = get_license_by_link(link_id)
-    if not lic: return "Invalido", 404
+    if not lic: return "Licencia inválida", 404
+    expira = lic[1]
+
     if request.method == "POST":
-        set_active_device(link_id, request.json.get("device_id"))
+        data = request.json
+        if not data.get("legal_ok"): return jsonify({"error": "Acepta términos"}), 403
+        device_id = data.get("device_id")
+        set_active_device(link_id, device_id)
         return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
+
     return render_template_string("""
-        <h3>AL CIELO - Activación</h3>
-        <p>Licencia: {{expira}}</p>
+        <h3>Activación AL CIELO</h3>
+        <p>Expira: {{expira}}</p>
+        <p><b>Uso privado:</b> Solo para el dispositivo registrado. No se permite descargar el mapa.</p>
         <button onclick="activar()">ACTIVAR SERVICIO</button>
         <script>
         async function activar(){
-            const id = localStorage.getItem("device_id") || crypto.randomUUID();
-            localStorage.setItem("device_id", id);
+            const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
+            localStorage.setItem("device_id", device_id);
             const res = await fetch("", {
                 method:"POST",
                 headers:{"Content-Type":"application/json"},
-                body:JSON.stringify({device_id:id, legal_ok:true})
+                body:JSON.stringify({device_id:device_id, legal_ok:true})
             });
             const data = await res.json();
             if(res.ok) window.location.href = data.map_url;
         }
         </script>
-    """, expira=lic[1])
+    """, expira=expira)
 
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
     lic = get_license_by_link(link_id)
-    if not lic: return "Denegado", 403
-    return render_template_string("""
-    <head>
-        <title>AL CIELO Navigation</title>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
-        <style>#map {height: 80vh; width: 100%;} .controls {padding:10px; background:#f4f4f4;}</style>
-    </head>
-    <body>
-        <div class="controls">
-            <input id="origen" placeholder="Origen (ej: Habana)" style="width:30%">
-            <input id="destino" placeholder="Destino (ej: Varadero)" style="width:30%">
-            <button onclick="calcularRuta()">IR AHORA</button>
-        </div>
-        <div id="map"></div>
+    if not lic: return "Acceso Denegado", 403
 
+    expira = lic[1]
+
+    # Viewer actualizado para navegación tipo Google
+    return render_template_string("""
+        <h3>AL CIELO – Visualizador de Cuba</h3>
+        <p>Licencia válida hasta: {{expira}}</p>
+        <p><b>Uso privado:</b> No se permite descargar ni redistribuir el contenido.</p>
+        <input id="direccion" placeholder="Escribe dirección en Cuba" style="width: 60%; padding:5px"/>
+        <button onclick="buscar()">Ir</button>
+        <div id="map" style="height:85vh;"></div>
+
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
         <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
-
         <script>
-        var map = L.map('map').setView([23.1136, -82.3666], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-        var control = null;
-        var geocoder = L.Control.Geocoder.nominatim();
-
-        function geocodePromise(address) {
-            return new Promise((resolve) => {
-                geocoder.geocode(address + ", Cuba", function(results) {
-                    if (results && results.length > 0) resolve(results[0].center);
-                    else resolve(null);
-                });
-            });
-        }
-
-        async function calcularRuta() {
-            const start = await geocodePromise(document.getElementById("origen").value);
-            const end = await geocodePromise(document.getElementById("destino").value);
-
-            if (!start || !end) { alert("Ubicación no encontrada en Cuba"); return; }
-            if (control) map.removeControl(control);
-
-            control = L.Routing.control({
-                waypoints: [L.latLng(start.lat, start.lng), L.latLng(end.lat, end.lng)],
-                router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
-                language: 'es',
-                createMarker: function() { return null; }
+            var map = L.map('map').setView([21.5, -79], 7);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: 'AL CIELO by May Roga LLC',
+                maxZoom: 18
             }).addTo(map);
 
-            control.on('routesfound', function(e) {
-                var instructions = e.routes[0].instructions[0].text;
-                var msg = new SpeechSynthesisUtterance("Ruta encontrada. " + instructions);
-                msg.lang = 'es-ES';
-                window.speechSynthesis.speak(msg);
-            });
-        }
+            var control = L.Routing.control({
+                waypoints: [],
+                routeWhileDragging: true,
+                geocoder: L.Control.Geocoder.nominatim(),
+                showAlternatives: true
+            }).addTo(map);
+
+            function buscar(){
+                var direccion = document.getElementById("direccion").value;
+                if(!direccion) return alert("Escribe una dirección en Cuba");
+                // Geocoding
+                fetch('https://nominatim.openstreetmap.org/search?format=json&q='+direccion+'+Cuba')
+                .then(res=>res.json())
+                .then(data=>{
+                    if(data.length==0) return alert("No se encontró la dirección");
+                    var lat = parseFloat(data[0].lat);
+                    var lon = parseFloat(data[0].lon);
+                    var waypoint = L.latLng(lat, lon);
+                    control.setWaypoints([map.getCenter(), waypoint]);
+                    map.setView(waypoint, 14);
+                    // Voz de navegación
+                    var utter = new SpeechSynthesisUtterance("Dirigiéndose a " + direccion);
+                    speechSynthesis.speak(utter);
+                });
+            }
+
+            // Desactivar clic derecho para blindaje legal
+            map.getContainer().addEventListener('contextmenu', function(e){ e.preventDefault(); });
         </script>
-    </body>
-    """, expira=lic[1])
+    """, expira=expira)
 
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
@@ -157,10 +162,10 @@ def stripe_webhook():
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except: return "Error", 400
+
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        line_items = stripe.checkout.Session.list_line_items(session["id"])
-        price_id = line_items.data[0].price.id
+        price_id = stripe.checkout.Session.list_line_items(session["id"]).data[0].price.id
         dias = PLANES.get(price_id, [0, 10])[1]
         link_id = str(uuid.uuid4())[:8]
         expira = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
@@ -169,3 +174,4 @@ def stripe_webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
