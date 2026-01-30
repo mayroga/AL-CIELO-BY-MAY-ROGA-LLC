@@ -6,11 +6,14 @@ from flask import Flask, request, jsonify, redirect, render_template_string
 from datetime import datetime, timedelta
 from database import init_db, create_license, get_license_by_link, get_license_by_session, add_device, set_active_device
 
-app = Flask(__name__, static_url_path='/static', static_folder='static')
+# ================= CONFIGURACIÓN =================
+app = Flask(__name__)
 init_db()
 
+# Claves de Entorno (Asegúrate de ponerlas en Render)
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY") # Necesaria para mapas en vivo
 BASE_URL = "https://al-cielo-by-may-roga-llc.onrender.com"
 
 stripe.api_key = STRIPE_SECRET_KEY
@@ -21,24 +24,32 @@ PLANES = {
     "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Acceso Admin (Bypass)"]
 }
 
+# ================= RUTAS DE ACCESO =================
+
 @app.route("/")
 def home():
-    html = """<h2>AL CIELO by May Roga LLC</h2><ul>"""
-    for price_id, (precio, dias, desc) in PLANES.items():
-        html += f'<li><a href="/checkout/{price_id}">{desc} – ${precio} / {dias} días</a></li>'
-    html += "</ul>"
+    html = """
+    <body style="font-family:sans-serif; text-align:center; padding:50px;">
+        <h2>AL CIELO by May Roga LLC</h2>
+        <p>Seleccione su plan de asesoría:</p>
+    """
+    for pid, (cost, days, name) in PLANES.items():
+        html += f'<div style="margin:10px;"><a href="/checkout/{pid}" style="padding:10px 20px; background:blue; color:white; text-decoration:none; border-radius:5px;">{name} - ${cost}</a></div>'
+    html += "</body>"
     return html
 
 @app.route("/checkout/<price_id>")
 def checkout(price_id):
-    if price_id not in PLANES: return "Error", 404
+    if price_id not in PLANES: return "Plan inválido", 404
     
+    # BYPASS DIRECTO PARA ADMIN
     if price_id == "price_1Sv6H2BOA5mT4t0PppizlRAK":
         link_id = str(uuid.uuid4())[:8]
         expira = (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S")
         create_license(link_id, f"ADMIN_{link_id}", expira)
         return redirect(f"/activar/{link_id}")
 
+    # PROCESO NORMAL STRIPE
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],
         mode="payment",
@@ -51,121 +62,105 @@ def checkout(price_id):
 @app.route("/success")
 def success():
     session_id = request.args.get("session_id")
-    time.sleep(5)  # espera 5 segundos antes de continuar
+    time.sleep(5) # Tiempo para que el webhook procese
     return redirect(f"/link/{session_id}")
 
 @app.route("/link/<session_id>")
 def link_redirect(session_id):
     link_id = get_license_by_session(session_id)
     if not link_id:
-        return "Confirmando pago con Stripe... Refresca en 5 segundos.", 404
+        return "<h3>Procesando licencia...</h3><script>setTimeout(()=>location.reload(), 5000);</script>", 200
     return redirect(f"/activar/{link_id}")
+
+# ================= ACTIVACIÓN Y VISOR EN VIVO =================
 
 @app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
     lic = get_license_by_link(link_id)
-    if not lic: return "Licencia inválida", 404
-    expira = lic[1]
-
+    if not lic: return "Licencia no encontrada", 404
+    
     if request.method == "POST":
         data = request.json
-        if not data.get("legal_ok"): return jsonify({"error": "Acepta términos"}), 403
         device_id = data.get("device_id")
         set_active_device(link_id, device_id)
-        return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
+        return jsonify({"status": "OK", "redirect": f"/viewer/{link_id}"})
 
     return render_template_string("""
-        <h3>Activación AL CIELO</h3>
-        <p>Expira: {{expira}}</p>
-        <button onclick="activar()">ACTIVAR SERVICIO</button>
-        <script>
-        async function activar(){
-            const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
-            localStorage.setItem("device_id", device_id);
-            const res = await fetch("", {
-                method:"POST",
-                headers:{"Content-Type":"application/json"},
-                body:JSON.stringify({device_id:device_id, legal_ok:true})
-            });
-            const data = await res.json();
-            if(res.ok) window.location.href = data.map_url;
-        }
-        </script>
-    """, expira=expira)
+        <body style="font-family:sans-serif; text-align:center; padding:20px;">
+            <h3>AL CIELO - Activación</h3>
+            <p>Licencia válida hasta: {{expira}}</p>
+            <div style="border:1px solid #ccc; padding:15px; margin:20px auto; max-width:400px;">
+                <p><small>Al activar, acepta que es residente/ciudadano de USA y que el uso es personal.</small></p>
+                <button onclick="activar()" style="padding:15px; cursor:pointer;">ACTIVAR SERVICIO</button>
+            </div>
+            <script>
+            async function activar(){
+                const devId = localStorage.getItem("device_id") || crypto.randomUUID();
+                localStorage.setItem("device_id", devId);
+                const res = await fetch("", {
+                    method:"POST",
+                    headers:{"Content-Type":"application/json"},
+                    body:JSON.stringify({device_id: devId, legal_ok: true})
+                });
+                const data = await res.json();
+                if(data.status === "OK") window.location.href = data.redirect;
+            }
+            </script>
+        </body>
+    """, expira=lic[1])
 
-# ==================== VISOR DE MAPA ESTILO GOOGLE ====================
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
     lic = get_license_by_link(link_id)
-    if not lic: return "Acceso Denegado", 403
-    expira = lic[1]
-
+    if not lic: return "Acceso prohibido", 403
+    
+    # INTERFAZ CON GOOGLE MAPS EN VIVO
     return render_template_string("""
-    <h3>AL CIELO – Mapa de Cuba</h3>
-    <p>Licencia válida hasta: {{expira}}</p>
-    <p><b>Uso privado:</b> Solo visualización. No se permite descargar.</p>
-    <div id="map" style="height:90vh;"></div>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>AL CIELO - Live Tracking</title>
+            <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+            <meta charset="utf-8">
+            <style>
+                #map { height: 100vh; width: 100%; }
+                .panel { position: absolute; top: 10px; left: 10px; z-index: 5; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+            </style>
+        </head>
+        <body>
+            <div class="panel">
+                <b>AL CIELO BY MAY ROGA</b><br>
+                <small>Licencia activa hasta: {{expira}}</small><br>
+                <button onclick="location.href='/'">Borrar Sesión</button>
+            </div>
+            <div id="map"></div>
+            <script async defer src="https://maps.googleapis.com/maps/api/js?key={{key}}&callback=initMap"></script>
+            <script>
+                function initMap() {
+                    var cuba = {lat: 21.5218, lng: -77.7812};
+                    var map = new google.maps.Map(document.getElementById('map'), {
+                        zoom: 7,
+                        center: cuba,
+                        mapTypeId: 'hybrid' // Vista Satélite + Calles para mayor detalle
+                    });
+                    
+                    if (navigator.geolocation) {
+                        navigator.geolocation.watchPosition(function(position) {
+                            var pos = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            };
+                            new google.maps.Marker({position: pos, map: map, title: "Tu ubicación"});
+                            map.setCenter(pos);
+                        });
+                    }
+                }
+            </script>
+        </body>
+        </html>
+    """, key=GOOGLE_MAPS_API_KEY, expira=lic[1])
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
-    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
-
-    <script>
-      var map = L.map('map').setView([21.5, -79], 7);
-
-      // Tile layer Cuba (OpenStreetMap)
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: 'AL CIELO by May Roga LLC',
-          maxZoom: 18
-      }).addTo(map);
-
-      // Routing (inicio y destino que el cliente elige)
-      var control = L.Routing.control({
-          waypoints: [],
-          routeWhileDragging: true,
-          geocoder: L.Control.Geocoder.nominatim({geocodingQueryParams:{language:"es"}}),
-          showAlternatives: true,
-          createMarker: function(i, wp, nWps) {
-              return L.marker(wp.latLng, {draggable:true});
-          }
-      }).addTo(map);
-
-      // Función para agregar ruta desde input
-      function agregarRuta(){
-          var inicio = prompt("Ingrese dirección de inicio:");
-          var destino = prompt("Ingrese dirección de destino:");
-          if(inicio && destino){
-              control.setWaypoints([inicio, destino]);
-          }
-      }
-
-      // Botón en pantalla
-      var btn = L.control({position: 'topright'});
-      btn.onAdd = function(map){
-          var div = L.DomUtil.create('div', 'leaflet-bar');
-          div.innerHTML = '<button onclick="agregarRuta()">Ir a Destino</button>';
-          return div;
-      }
-      btn.addTo(map);
-
-      // Voz en español para instrucciones
-      map.on('routeselected', function(e){
-          var steps = e.route.instructions || [];
-          steps.forEach(function(step){
-              var utter = new SpeechSynthesisUtterance(step.text);
-              utter.lang = 'es-ES';
-              speechSynthesis.speak(utter);
-          });
-      });
-
-      // Bloqueo descarga
-      map.getContainer().addEventListener('contextmenu', function(e){ e.preventDefault(); });
-    </script>
-    """, expira=expira)
-# ==================== FIN VISOR =======================================
+# ================= WEBHOOK Y CIERRE =================
 
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
@@ -177,11 +172,14 @@ def stripe_webhook():
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        price_id = stripe.checkout.Session.list_line_items(session["id"]).data[0].price.id
-        dias = PLANES.get(price_id, [0, 10])[1]
+        items = stripe.checkout.Session.list_line_items(session["id"])
+        price_id = items.data[0].price.id
+        days = PLANES.get(price_id, [0, 10])[1]
+        
         link_id = str(uuid.uuid4())[:8]
-        expira = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+        expira = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
         create_license(link_id, session["id"], expira)
+        
     return "OK", 200
 
 if __name__ == "__main__":
