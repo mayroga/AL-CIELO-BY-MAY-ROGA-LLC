@@ -1,43 +1,45 @@
 import os
+import time
 import uuid
 from datetime import datetime, timedelta
-from flask import Flask, redirect, request, jsonify, render_template_string
+from flask import Flask, jsonify, redirect, request, render_template_string
 import stripe
 
 from database import (
     init_db,
     create_license,
-    get_license_by_session
+    get_license_by_session,
 )
 
 # ================= APP =================
 app = Flask(__name__)
 init_db()
 
-# ================= ENV =================
+# ================= STRIPE =================
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-BASE_URL = os.getenv("BASE_URL", "https://al-cielo-by-may-roga-llc.onrender.com")
+
+BASE_URL = os.getenv(
+    "BASE_URL",
+    "https://al-cielo-by-may-roga-llc.onrender.com"
+)
 
 # ================= PLANES =================
 PLANES = {
-    "10dias": {
+    "10": {
         "price_id": "price_1Sv5uXBOA5mT4t0PtV7RaYCa",
-        "precio": 15,
         "dias": 10,
-        "nombre": "Asesoría 10 Días"
+        "precio": 15
     },
-    "28dias": {
+    "28": {
         "price_id": "price_1Sv69jBOA5mT4t0PUA7yiisS",
-        "precio": 25,
         "dias": 28,
-        "nombre": "Asesoría 28 Días"
+        "precio": 25
     },
     "admin": {
         "price_id": "price_1Sv6H2BOA5mT4t0PppizlRAK",
-        "precio": 0,
         "dias": 20,
-        "nombre": "Acceso Admin (Bypass)"
+        "precio": 0
     }
 }
 
@@ -46,51 +48,64 @@ PLANES = {
 def home():
     return render_template_string("""
     <h2>AL CIELO by May Roga LLC</h2>
-    <p><b>Compra tu acceso y recibe tu activación automática:</b></p>
+    <p>Selecciona tu acceso:</p>
 
-    {% for k, p in planes.items() %}
-      <form action="/checkout/{{k}}" method="POST">
-        <button style="padding:10px;margin:10px;font-size:16px">
-          {{p.nombre}} – ${{p.precio}} / {{p.dias}} días
-        </button>
-      </form>
-    {% endfor %}
-    """, planes=PLANES)
+    <ul>
+      <li><a href="/pagar/10">Asesoría 10 días – $15</a></li>
+      <li><a href="/pagar/28">Asesoría 28 días – $25</a></li>
+      <li><a href="/pagar/admin">Acceso Admin</a></li>
+    </ul>
+    """)
 
-# ================= CHECKOUT =================
-@app.route("/checkout/<plan>", methods=["POST"])
-def checkout(plan):
+# ================= CREAR PAGO =================
+@app.route("/pagar/<plan>")
+def pagar(plan):
     if plan not in PLANES:
         return "Plan inválido", 404
 
     session = stripe.checkout.Session.create(
         mode="payment",
+        payment_method_types=["card"],
         line_items=[{
             "price": PLANES[plan]["price_id"],
             "quantity": 1
         }],
-        success_url=f"{BASE_URL}/success?session_id={{CHECKOUT_SESSION_ID}}",
+        success_url=f"{BASE_URL}/procesando?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{BASE_URL}/"
     )
 
-    return redirect(session.url, code=303)
+    return redirect(session.url)
 
-# ================= SUCCESS =================
-@app.route("/success")
-def success():
+# ================= PANTALLA DE ESPERA =================
+@app.route("/procesando")
+def procesando():
     session_id = request.args.get("session_id")
     if not session_id:
         return "Sesión inválida", 400
 
-    return f"""
-    <h3>Pago realizado con éxito</h3>
-    <p>Activando tu acceso…</p>
+    return render_template_string("""
+    <h2>Procesando tu activación…</h2>
+    <p>Por favor espera unos segundos.</p>
+
     <script>
-      setTimeout(() => {{
-        window.location.href = "/link/{session_id}";
-      }}, 3000);
+    setTimeout(() => {
+        window.location.href = "/activar/{{session_id}}";
+    }, 12000); // 12 segundos
     </script>
-    """
+    """, session_id=session_id)
+
+# ================= ACTIVAR =================
+@app.route("/activar/<session_id>")
+def activar(session_id):
+    link_id = get_license_by_session(session_id)
+
+    if not link_id:
+        return """
+        <p>Tu licencia aún se está generando.</p>
+        <p>Refresca en unos segundos…</p>
+        """
+
+    return redirect(f"{BASE_URL}/viewer/{link_id}")
 
 # ================= STRIPE WEBHOOK =================
 @app.route("/stripe/webhook", methods=["POST"])
@@ -107,8 +122,9 @@ def stripe_webhook():
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
+        session_id = session["id"]
 
-        line_items = stripe.checkout.Session.list_line_items(session["id"])
+        line_items = stripe.checkout.Session.list_line_items(session_id)
         price_id = line_items.data[0].price.id
 
         dias = 10
@@ -117,22 +133,19 @@ def stripe_webhook():
                 dias = p["dias"]
 
         link_id = str(uuid.uuid4())[:8]
-        expires = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+        expira = (
+            datetime.utcnow() + timedelta(days=dias)
+        ).strftime("%Y-%m-%d %H:%M:%S")
 
-        create_license(link_id, session["id"], expires)
-        print("✅ LICENCIA CREADA:", link_id)
+        create_license(link_id, session_id, expira)
 
-    return jsonify({"ok": True})
+        print("LICENCIA CREADA:", link_id)
 
-# ================= LINK =================
-@app.route("/link/<session_id>")
-def link(session_id):
-    link_id = get_license_by_session(session_id)
-    if not link_id:
-        return "Licencia aún no lista. Refresca en 5 segundos.", 404
-
-    return redirect(f"/activar/{link_id}")
+    return "OK", 200
 
 # ================= RUN =================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000))
+    )
