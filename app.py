@@ -4,15 +4,7 @@ import stripe
 from flask import Flask, request, jsonify, render_template_string, redirect
 from datetime import datetime, timedelta
 
-from database import (
-    init_db,
-    create_license,
-    get_license_by_link,
-    get_license_by_session,
-    get_devices,
-    add_device,
-    set_active_device
-)
+from database import init_db, create_license, get_license_by_link, get_license_by_session, get_devices, add_device, set_active_device
 
 app = Flask(__name__)
 init_db()
@@ -24,11 +16,11 @@ BASE_URL = "https://al-cielo-by-may-roga-llc.onrender.com"
 
 stripe.api_key = STRIPE_SECRET_KEY
 
-# ================= PLANES =================
+# ================= PLANES POR PRICE ID =================
 PLANES = {
-    "bJe8wOaof8dR7sXaPF7Vm0k": 10,
-    "dRm6oG8g7cu76oT1f57Vm0i": 10,
-    "14A3cudArfGj9B51f57Vm0j": 28
+    "price_1Sv5uXBOA5mT4t0PtV7RaYCa": 10,  # $15 / 10 días
+    "price_1Sv69jBOA5mT4t0PUA7yiisS": 28,  # $25 / 28 días
+    "price_1Sv6H2BOA5mT4t0PppizlRAK": 20   # Admin 0$ / 20 días
 }
 
 # ================= HOME =================
@@ -48,32 +40,35 @@ def home():
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
     payload = request.data
-    sig = request.headers.get("Stripe-Signature")
+    sig_header = request.headers.get("Stripe-Signature")
 
     try:
-        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except Exception:
         return jsonify({"error": "Webhook inválido"}), 400
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        session_id = session["id"]
-        checkout_url = session.get("url", "")
+        session_id = session.get("id")
 
-        dias = 10
-        for k, v in PLANES.items():
-            if k in checkout_url:
-                dias = v
+        # Obtener el Price ID de la compra
+        line_items = stripe.checkout.Session.list_line_items(session_id)
+        dias = 10  # fallback
+        for item in line_items.data:
+            price_id = item.price.id
+            if price_id in PLANES:
+                dias = PLANES[price_id]
 
+        # Crear licencia
         link_id = str(uuid.uuid4())[:8]
         expira = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
 
         create_license(link_id, session_id, expira)
-        print("LICENCIA CREADA:", link_id)
+        print("✅ LICENCIA CREADA:", link_id)
 
     return jsonify({"ok": True})
 
-# ================= REDIRECCIÓN =================
+# ================= REDIRECCIÓN POST PAGO =================
 @app.route("/link/<session_id>")
 def link_redirect(session_id):
     link_id = get_license_by_session(session_id)
@@ -89,6 +84,10 @@ def activar(link_id):
         return "Licencia inválida o vencida", 404
 
     _, expira, active_device = lic
+
+    # Validar expiración
+    if datetime.utcnow() > datetime.strptime(expira, "%Y-%m-%d %H:%M:%S"):
+        return "Licencia expirada", 403
 
     if request.method == "POST":
         data = request.json
@@ -118,12 +117,11 @@ def activar(link_id):
     <p>Licencia válida hasta: {{expira}}</p>
     <p>Máx. 2 dispositivos · Solo 1 activo</p>
 
-    <p><b>Blindaje legal:</b> El mapa es descargado por el usuario, 
-    para uso privado, bajo su responsabilidad. May Roga LLC no controla
-    el uso posterior ni redistribuye mapas.</p>
+    <p><b>Blindaje legal:</b> El mapa se descarga por el usuario para uso privado. 
+    May Roga LLC no controla uso posterior ni redistribución.</p>
 
     <label>
-      <input type="checkbox" id="legal"> Acepto términos
+      <input type="checkbox" id="legal"> Acepto términos legales
     </label><br><br>
 
     <button onclick="activar()">Activar</button>
@@ -134,13 +132,13 @@ def activar(link_id):
         alert("Debe aceptar los términos");
         return;
       }
-      const id = localStorage.getItem("device_id") || crypto.randomUUID();
-      localStorage.setItem("device_id", id);
+      const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
+      localStorage.setItem("device_id", device_id);
 
       const res = await fetch("", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({device_id:id, legal_ok:true})
+        body:JSON.stringify({device_id:device_id, legal_ok:true})
       });
       const data = await res.json();
       if(res.ok){
