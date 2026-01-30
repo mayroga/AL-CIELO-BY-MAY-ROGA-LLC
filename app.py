@@ -14,7 +14,7 @@ from database import (
     set_active_device
 )
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static', static_folder='static')
 init_db()
 
 # ================= ENV =================
@@ -25,24 +25,24 @@ BASE_URL = "https://al-cielo-by-may-roga-llc.onrender.com"
 stripe.api_key = STRIPE_SECRET_KEY
 
 # ================= PLANES =================
+# Price ID : [Precio, Duración en días, Descripción]
 PLANES = {
-    "price_1Sv5uXBOA5mT4t0PtV7RaYCa": 10,  # $15 / 10 días
-    "price_1Sv69jBOA5mT4t0PUA7yiisS": 28,  # $25 / 28 días
-    "price_1Sv6H2BOA5mT4t0PppizlRAK": 20   # $0 / 20 días (Admin)
-}
-
-LINKS_STRIPE = {
-    "price_1Sv5uXBOA5mT4t0PtV7RaYCa": "https://buy.stripe.com/price_1Sv5uXBOA5mT4t0PtV7RaYCa",
-    "price_1Sv69jBOA5mT4t0PUA7yiisS": "https://buy.stripe.com/price_1Sv69jBOA5mT4t0PUA7yiisS",
-    "price_1Sv6H2BOA5mT4t0PppizlRAK": "https://buy.stripe.com/price_1Sv6H2BOA5mT4t0PppizlRAK"
+    "price_1Sv5uXBOA5mT4t0PtV7RaYCa": [15.00, 10, "Asesoría 10 Días"],
+    "price_1Sv69jBOA5mT4t0PUA7yiisS": [25.00, 28, "Asesoría 28 Días"],
+    "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Acceso Admin (Bypass)"]
 }
 
 # ================= HOME =================
 @app.route("/")
 def home():
-    html = "<h2>AL CIELO by May Roga LLC</h2><p>Compra tu acceso y recibe tu activación automática:</p><ul>"
-    for pid, url in LINKS_STRIPE.items():
-        html += f'<li><a href="{url}">{url.split("/")[-1]}</a></li>'
+    html = """
+    <h2>AL CIELO by May Roga LLC</h2>
+    <p>Compra tu acceso y recibe tu activación automática:</p>
+    <ul>
+    """
+    # Crear links clicables
+    for price_id, (precio, dias, desc) in PLANES.items():
+        html += f'<li><a href="https://buy.stripe.com/{price_id}" target="_blank">{desc} – ${precio} / {dias} días</a></li>'
     html += "</ul>"
     return html
 
@@ -60,14 +60,17 @@ def stripe_webhook():
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         session_id = session["id"]
-        price_id = session["line_items"]["data"][0]["price"]["id"] if "line_items" in session else None
+        line_items = stripe.checkout.Session.list_line_items(session_id)
 
-        dias = PLANES.get(price_id, 10)
+        # Tomar primer item (asume solo 1 producto por checkout)
+        price_id = line_items.data[0].price.id
+        dias = PLANES.get(price_id, [0, 10])[1]  # fallback a 10 días si no encuentra
+
+        # Crear licencia
         link_id = str(uuid.uuid4())[:8]
         expira = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
-
         create_license(link_id, session_id, expira)
-        print("✅ LICENCIA CREADA:", link_id)
+        print(f"✅ LICENCIA CREADA: {link_id} – Price ID: {price_id}")
 
     return jsonify({"ok": True})
 
@@ -86,7 +89,7 @@ def activar(link_id):
     if not lic:
         return "Licencia inválida o vencida", 404
 
-    _, expira, _ = lic
+    _, expira, active_device = lic
 
     if request.method == "POST":
         data = request.json
@@ -114,11 +117,10 @@ def activar(link_id):
     <h2>AL CIELO – Activación</h2>
     <p>Licencia válida hasta: {{expira}}</p>
     <p>Máx. 2 dispositivos · Solo 1 activo</p>
-
+    <p><b>Blindaje legal:</b> Uso privado del mapa. May Roga LLC no se hace responsable por redistribución.</p>
     <label>
       <input type="checkbox" id="legal"> Acepto términos
     </label><br><br>
-
     <button onclick="activar()">Activar</button>
 
     <script>
@@ -127,16 +129,17 @@ def activar(link_id):
         alert("Debe aceptar los términos");
         return;
       }
-      const id = localStorage.getItem("device_id") || crypto.randomUUID();
-      localStorage.setItem("device_id", id);
+      const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
+      localStorage.setItem("device_id", device_id);
 
       const res = await fetch("", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({device_id:id, legal_ok:true})
+        body:JSON.stringify({device_id:device_id, legal_ok:true})
       });
       const data = await res.json();
       if(res.ok){
+        alert("Licencia activada! Descargando mapa...");
         window.location.href = data.map_url;
       } else {
         alert(data.error);
