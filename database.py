@@ -1,5 +1,4 @@
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 
 DB_PATH = Path("data.db")
@@ -10,8 +9,7 @@ def get_conn():
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
-
-    # Tabla de licencias
+    # Licencias
     cur.execute("""
     CREATE TABLE IF NOT EXISTS licenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,8 +19,7 @@ def init_db():
         active_device TEXT
     )
     """)
-
-    # Tabla de dispositivos
+    # Dispositivos
     cur.execute("""
     CREATE TABLE IF NOT EXISTS devices (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,10 +27,10 @@ def init_db():
         device_id TEXT
     )
     """)
-
     conn.commit()
     conn.close()
 
+# --- LICENCIAS ---
 def create_license(link_id, session_id, expires_at):
     conn = get_conn()
     cur = conn.cursor()
@@ -60,6 +57,7 @@ def get_license_by_session(session_id):
     conn.close()
     return row[0] if row else None
 
+# --- DISPOSITIVOS ---
 def get_devices(link_id):
     conn = get_conn()
     cur = conn.cursor()
@@ -71,19 +69,13 @@ def get_devices(link_id):
 def add_device(link_id, device_id):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO devices (link_id, device_id) VALUES (?,?)",
-        (link_id, device_id)
-    )
+    cur.execute("INSERT INTO devices (link_id, device_id) VALUES (?,?)", (link_id, device_id))
     conn.commit()
     conn.close()
 
 def set_active_device(link_id, device_id):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(
-        "UPDATE licenses SET active_device=? WHERE link_id=?",
-        (device_id, link_id)
-    )
+    cur.execute("UPDATE licenses SET active_device=? WHERE link_id=?", (device_id, link_id))
     conn.commit()
     conn.close()
