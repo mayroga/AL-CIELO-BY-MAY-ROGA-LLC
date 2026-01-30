@@ -1,82 +1,120 @@
 import os
 import uuid
+import time
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, redirect, render_template_string
-import stripe
-from database import init_db, create_license, get_license_by_session
 
-app = Flask(__name__)
+import stripe
+from database import init_db, create_license, get_license_by_link, get_license_by_session
+
+# ================= FLASK =================
+app = Flask(__name__, static_url_path='/static', static_folder='static')
 init_db()
 
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+# ================= ENV =================
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 BASE_URL = os.getenv("BASE_URL", "https://al-cielo-by-may-roga-llc.onrender.com")
 
+stripe.api_key = STRIPE_SECRET_KEY
+
+# ================= PLANES =================
 PLANES = {
-    "10": {"price_id": "price_1Sv5uXBOA5mT4t0PtV7RaYCa", "dias": 10, "precio": 15},
-    "28": {"price_id": "price_1Sv69jBOA5mT4t0PUA7yiisS", "dias": 28, "precio": 25},
-    "admin": {"price_id": "price_1Sv6H2BOA5mT4t0PppizlRAK", "dias": 20, "precio": 0}
+    "price_1Sv5uXBOA5mT4t0PtV7RaYCa": {"precio": 15.0, "dias": 10, "desc": "Asesoría 10 Días"},
+    "price_1Sv69jBOA5mT4t0PUA7yiisS": {"precio": 25.0, "dias": 28, "desc": "Asesoría 28 Días"},
+    "price_1Sv6H2BOA5mT4t0PppizlRAK": {"precio": 0.0, "dias": 20, "desc": "Acceso Admin (Bypass)"}
 }
 
-# ---------------- HOME ----------------
+# ================= HOME =================
 @app.route("/")
 def home():
-    return render_template_string("""
+    html = """
     <h2>AL CIELO by May Roga LLC</h2>
-    <p>Selecciona tu acceso:</p>
+    <p>Compra tu acceso y recibe tu activación automática:</p>
     <ul>
-        <li><a href="/pagar/10">Asesoría 10 días – $15</a></li>
-        <li><a href="/pagar/28">Asesoría 28 días – $25</a></li>
-        <li><a href="/pagar/admin">Acceso Admin</a></li>
-    </ul>
-    """)
+    """
+    for price_id, plan in PLANES.items():
+        # link clicable a Stripe Checkout
+        html += f'<li><a href="https://buy.stripe.com/{price_id}" target="_blank">{plan["desc"]} – ${plan["precio"]} / {plan["dias"]} días</a></li>'
+    html += "</ul>"
+    html += "<p>📌 Nota: Tras completar el pago, serás redirigido automáticamente a tu visor de mapas.</p>"
+    return html
 
-# ---------------- CREAR SESIÓN DE PAGO ----------------
-@app.route("/pagar/<plan>")
-def pagar(plan):
-    if plan not in PLANES:
-        return "Plan inválido", 404
-    session = stripe.checkout.Session.create(
-        mode="payment",
-        payment_method_types=["card"],
-        line_items=[{"price": PLANES[plan]["price_id"], "quantity": 1}],
-        success_url=f"{BASE_URL}/success?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{BASE_URL}/"
-    )
-    return redirect(session.url)
-
-# ---------------- SUCCESS / ESPERA ----------------
+# ================= SUCCESS =================
 @app.route("/success")
 def success():
     session_id = request.args.get("session_id")
     if not session_id:
         return "Sesión inválida", 400
-    return render_template_string("""
-    <h2>Procesando tu licencia…</h2>
-    <p>Espera unos segundos para que se cree tu acceso automáticamente.</p>
-    <script>
-    async function checkLicense(){
-        const resp = await fetch("/link/{{session_id}}");
-        if(resp.status === 200){
-            const data = await resp.json();
-            window.location.href = data.url;
-        } else {
-            setTimeout(checkLicense, 3000); // Reintenta cada 3s
-        }
-    }
-    checkLicense();
-    </script>
-    """, session_id=session_id)
 
-# ---------------- LINK POR SESSION ----------------
-@app.route("/link/<session_id>")
-def link(session_id):
+    # Si ya existe licencia, redirige
     link_id = get_license_by_session(session_id)
-    if not link_id:
-        return "Licencia aún no lista", 404
-    return jsonify({"url": f"{BASE_URL}/viewer/{link_id}"})
+    if link_id:
+        return redirect(f"/viewer/{link_id}")
 
-# ---------------- WEBHOOK STRIPE ----------------
+    # Crear licencia inmediata
+    try:
+        session = stripe.checkout.Session.retrieve(session_id, expand=["line_items"])
+        line_items = session.line_items.data
+        price_id = line_items[0].price.id
+        plan = PLANES.get(price_id, {"dias": 10})
+        dias = plan["dias"]
+
+        link_id = str(uuid.uuid4())[:8]
+        expira = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+        create_license(link_id, session_id, expira)
+        print(f"✅ LICENCIA CREADA INMEDIATA: {link_id}")
+
+        # Dar un pequeño delay para que todo se registre (Stripe / DB)
+        time.sleep(3)
+
+        # Redirige automáticamente al visor
+        return redirect(f"/viewer/{link_id}")
+
+    except Exception as e:
+        return f"Error creando licencia: {e}", 500
+
+# ================= VIEWER =================
+@app.route("/viewer/<link_id>")
+def viewer(link_id):
+    lic = get_license_by_link(link_id)
+    if not lic:
+        return "Licencia inválida o vencida", 404
+
+    _, expira = lic
+
+    return render_template_string("""
+    <h2>AL CIELO – Visor de Mapas</h2>
+    <p>Licencia válida hasta: {{expira}}</p>
+    <p>📌 Uso exclusivo privado. No se permite descargar o redistribuir.</p>
+    <div id="map" style="height: 80vh; width: 100%;"></div>
+
+    <!-- Leaflet.js para mapas -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+      const map = L.map('map', {zoomControl: true}).setView([23.1136, -82.3666], 7); // Cuba
+
+      // Tiles en streaming desde el servidor (no descarga)
+      L.tileLayer('/static/maps/{z}/{x}/{y}.png', {
+        attribution: '&copy; May Roga LLC',
+        maxZoom: 18,
+        tms: false
+      }).addTo(map);
+
+      // Navegación tipo Google (orientación, voz opcional)
+      function onLocationFound(e) {
+        const radius = e.accuracy;
+        L.marker(e.latlng).addTo(map)
+          .bindPopup("Estás aquí (precisión ±" + radius + " m)").openPopup();
+      }
+      map.locate({setView: true, watch: true, maxZoom: 17});
+      map.on('locationfound', onLocationFound);
+    </script>
+    """, expira=expira)
+
+# ================= STRIPE WEBHOOK =================
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
     payload = request.data
@@ -84,23 +122,21 @@ def stripe_webhook():
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except Exception:
-        return "Webhook inválido", 400
+        return jsonify({"error": "Webhook inválido"}), 400
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         session_id = session["id"]
         line_items = stripe.checkout.Session.list_line_items(session_id)
         price_id = line_items.data[0].price.id
-        dias = 10
-        for p in PLANES.values():
-            if p["price_id"] == price_id:
-                dias = p["dias"]
+        dias = PLANES.get(price_id, {"dias": 10})["dias"]
         link_id = str(uuid.uuid4())[:8]
         expira = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
         create_license(link_id, session_id, expira)
-        print(f"✅ LICENCIA CREADA: {link_id}")
-    return "OK", 200
+        print(f"✅ LICENCIA CREADA (WEBHOOK): {link_id}")
 
-# ---------------- RUN ----------------
+    return jsonify({"ok": True})
+
+# ================= RUN =================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
