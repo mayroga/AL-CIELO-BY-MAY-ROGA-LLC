@@ -2,3 +2,5 @@ flask==3.0.0
 gunicorn==21.2.0
 stripe==7.1.0
 python-dotenv==1.0.0
+db-sqlite3==0.0.1
+mbutil==0.3.0
