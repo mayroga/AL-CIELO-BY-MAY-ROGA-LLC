@@ -52,8 +52,7 @@ def checkout(price_id):
 @app.route("/success")
 def success():
     session_id = request.args.get("session_id")
-    # Espera 10-15s para que el sistema cree la licencia
-    time.sleep(12) 
+    time.sleep(5)  # espera para que la licencia se genere
     return redirect(f"/link/{session_id}")
 
 @app.route("/link/<session_id>")
@@ -79,7 +78,6 @@ def activar(link_id):
     return render_template_string("""
         <h3>Activación AL CIELO</h3>
         <p>Expira: {{expira}}</p>
-        <p><b>Uso privado:</b> Solo para el dispositivo registrado. No se permite descargar el mapa.</p>
         <button onclick="activar()">ACTIVAR SERVICIO</button>
         <script>
         async function activar(){
@@ -96,63 +94,67 @@ def activar(link_id):
         </script>
     """, expira=expira)
 
+# VISOR DE MAPA CON NAVEGACIÓN, VOZ Y BUSCADOR
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
     lic = get_license_by_link(link_id)
     if not lic: return "Acceso Denegado", 403
-
     expira = lic[1]
 
-    # Viewer actualizado para navegación tipo Google
     return render_template_string("""
-        <h3>AL CIELO – Visualizador de Cuba</h3>
-        <p>Licencia válida hasta: {{expira}}</p>
-        <p><b>Uso privado:</b> No se permite descargar ni redistribuir el contenido.</p>
-        <input id="direccion" placeholder="Escribe dirección en Cuba" style="width: 60%; padding:5px"/>
-        <button onclick="buscar()">Ir</button>
-        <div id="map" style="height:85vh;"></div>
+    <h3>AL CIELO – Mapas de Cuba</h3>
+    <p>Licencia válida hasta: {{expira}}</p>
+    <p><b>Uso privado:</b> El mapa solo puede visualizarse. No se permite descargar.</p>
+    <input type="text" id="direccion" placeholder="Buscar dirección..." style="width:60%;padding:5px;"/>
+    <button onclick="buscarDireccion()">Buscar</button>
+    <div id="map" style="height:80vh;"></div>
 
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
-        <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
-        <script>
-            var map = L.map('map').setView([21.5, -79], 7);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: 'AL CIELO by May Roga LLC',
-                maxZoom: 18
-            }).addTo(map);
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
+    
+    <script>
+      var map = L.map('map').setView([21.5, -79], 7);
 
-            var control = L.Routing.control({
-                waypoints: [],
-                routeWhileDragging: true,
-                geocoder: L.Control.Geocoder.nominatim(),
-                showAlternatives: true
-            }).addTo(map);
+      // Tile layer streaming desde tu servidor o CDN
+      L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+          attribution: 'AL CIELO by May Roga LLC',
+          maxZoom: 18
+      }).addTo(map);
 
-            function buscar(){
-                var direccion = document.getElementById("direccion").value;
-                if(!direccion) return alert("Escribe una dirección en Cuba");
-                // Geocoding
-                fetch('https://nominatim.openstreetmap.org/search?format=json&q='+direccion+'+Cuba')
-                .then(res=>res.json())
-                .then(data=>{
-                    if(data.length==0) return alert("No se encontró la dirección");
-                    var lat = parseFloat(data[0].lat);
-                    var lon = parseFloat(data[0].lon);
-                    var waypoint = L.latLng(lat, lon);
-                    control.setWaypoints([map.getCenter(), waypoint]);
-                    map.setView(waypoint, 14);
-                    // Voz de navegación
-                    var utter = new SpeechSynthesisUtterance("Dirigiéndose a " + direccion);
-                    speechSynthesis.speak(utter);
-                });
-            }
+      // Routing
+      var control = L.Routing.control({
+          waypoints: [],
+          routeWhileDragging: true,
+          geocoder: L.Control.Geocoder.nominatim({geocodingQueryParams:{language:'es'}}),
+          showAlternatives: true
+      }).addTo(map);
 
-            // Desactivar clic derecho para blindaje legal
-            map.getContainer().addEventListener('contextmenu', function(e){ e.preventDefault(); });
-        </script>
+      // Función de búsqueda
+      function buscarDireccion(){
+          var direccion = document.getElementById("direccion").value;
+          if(!direccion) return;
+          fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(direccion)}&countrycodes=CU&limit=1`)
+          .then(res => res.json())
+          .then(data => {
+              if(data.length==0){ alert("No encontrado"); return; }
+              var latlng = [data[0].lat, data[0].lon];
+              map.setView(latlng, 16);
+              L.marker(latlng).addTo(map);
+
+              // voz en español
+              var utter = new SpeechSynthesisUtterance("Dirígete a " + direccion);
+              utter.lang = 'es-ES';
+              speechSynthesis.speak(utter);
+          });
+      }
+
+      // Prevención descarga
+      map.getContainer().addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    </script>
     """, expira=expira)
 
 @app.route("/stripe/webhook", methods=["POST"])
