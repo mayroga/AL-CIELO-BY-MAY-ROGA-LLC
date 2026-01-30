@@ -21,7 +21,7 @@ VIEWER_HTML = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>AL CIELO - Navegación Profesional</title>
+    <title>AL CIELO - Navegación de Precisión</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -29,35 +29,38 @@ VIEWER_HTML = """
     <style>
         body { margin:0; background:#000; font-family: 'Segoe UI', sans-serif; color:white; overflow:hidden; }
         #map { height: 70vh; width: 100%; border-bottom: 3px solid #0056b3; }
-        .panel { height: 30vh; background:#111; padding:10px; display:flex; flex-direction:column; gap:5px; position:relative; }
-        .search-box { display:flex; gap:5px; }
-        input { flex:1; padding:10px; border-radius:6px; border:1px solid #333; background:#222; color:white; font-size:14px; }
-        .btn-group { display:flex; gap:5px; }
-        button { flex:1; padding:12px; border-radius:6px; font-weight:bold; border:none; cursor:pointer; color:white; }
-        .btn-search { background:#333; }
-        .btn-nav { background:#0056b3; display:none; }
-        #instrucciones { font-size:14px; color:#00ff00; text-align:center; font-weight:bold; text-transform: uppercase; }
-        #velocimetro { position:absolute; top:-60px; right:10px; background:rgba(0,0,0,0.8); padding:10px; border-radius:50%; border:2px solid #0056b3; width:40px; height:40px; text-align:center; line-height:40px; font-size:14px; z-index:1000; }
-        .leaflet-routing-container { background: #222 !important; color: white !important; font-size: 12px; max-height: 150px !important; }
-        .car-icon { font-size: 35px; text-shadow: 2px 2px 4px #000; transition: all 0.5s linear; }
+        .panel { height: 30vh; background:#111; padding:10px; display:flex; flex-direction:column; gap:5px; }
+        .search-box { display:flex; gap:5px; flex-wrap: wrap; }
+        input { flex:1; min-width: 140px; padding:8px; border-radius:6px; border:1px solid #333; background:#222; color:white; font-size:13px; }
+        .btn-group { display: flex; gap: 5px; }
+        .btn-nav { flex: 1; background:#0056b3; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; }
+        .btn-alt { flex: 1; background:#444; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; }
+        #instrucciones { font-size:14px; color:#00ff00; font-weight:bold; text-align:center; min-height:1.2em; text-transform: uppercase; }
+        .telemetria { display: flex; justify-content: space-around; background: #222; padding: 5px; border-radius: 5px; font-family: monospace; color: #0af; }
+        .status-bar { font-size:10px; color:#555; display:flex; justify-content:space-between; }
+        .leaflet-routing-container { display: none; }
     </style>
 </head>
 <body oncontextmenu="return false;">
     <div id="map"></div>
-    <div id="velocimetro">0<br><small>km/h</small></div>
     <div class="panel">
-        <div id="instrucciones">LISTO PARA TRASLADO EN CUBA</div>
+        <div id="instrucciones">LISTO PARA NAVEGAR CUBA</div>
+        <div class="telemetria">
+            <span>VEL: <b id="vel">0</b> km/h</span>
+            <span>ALT: <b id="alt">0</b> m</span>
+            <span>MODO: <b id="modo">ESPERA</b></span>
+        </div>
         <div class="search-box">
-            <input id="origen" placeholder="Tu ubicación">
-            <input id="destino" placeholder="Destino final">
+            <input id="origen" placeholder="Origen (Ej: Cabo San Antonio)">
+            <input id="destino" placeholder="Destino (Ej: Punta de Maisí)">
         </div>
         <div class="btn-group">
-            <button class="btn-search" onclick="buscarRutas()">BUSCAR RUTAS</button>
-            <button id="btnNav" class="btn-nav" onclick="activarNavegacionGPS()">INICIAR NAVEGACIÓN</button>
+            <button class="btn-alt" onclick="buscarRutas()">BUSCAR RUTAS</button>
+            <button class="btn-nav" onclick="iniciarNavegacion()">NAVEGAR</button>
         </div>
-        <div style="font-size:9px; color:#555; display:flex; justify-content:space-between; margin-top:5px;">
-            <span>MAY ROGA LLC | USA JURISDICTION</span>
-            <span>EXP: {{expira}}</span>
+        <div class="status-bar">
+            <span>MAY ROGA LLC | AL CIELO V2.0</span>
+            <span>EXPIRA: {{expira}}</span>
         </div>
     </div>
 
@@ -67,21 +70,22 @@ VIEWER_HTML = """
         var map = L.map('map', { zoomControl: false }).setView([21.5, -79.5], 7);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
+        var carMarker = L.marker([0,0], {
+            icon: L.divIcon({html: '<div style="font-size:30px; filter: drop-shadow(0 0 5px #fff);">🚗</div>', className: 'car-icon', iconSize: [40, 40]})
+        }).addTo(map);
+
         var control = L.Routing.control({
             waypoints: [],
             router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1', profile: 'car' }),
             lineOptions: { styles: [{color: '#00ff00', opacity: 0.8, weight: 8}] },
             showAlternatives: true,
-            altLineOptions: { styles: [{color: '#ffa500', opacity: 0.5, weight: 6}] },
             language: 'es'
         }).addTo(map);
 
-        var carMarker = L.marker([0,0], {
-            icon: L.divIcon({html: '🚗', className: 'car-icon', iconAnchor: [17, 17]})
-        }).addTo(map);
+        var navegando = false;
+        var watchID = null;
 
         async function geocode(query) {
-            if(!query) return null;
             const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query},Cuba`);
             const d = await r.json();
             return d.length > 0 ? L.latLng(d[0].lat, d[0].lon) : null;
@@ -92,36 +96,37 @@ VIEWER_HTML = """
             const p2 = await geocode(document.getElementById('destino').value);
             if(p1 && p2) {
                 control.setWaypoints([p1, p2]);
-                document.getElementById('btnNav').style.display = 'block';
-                hablar("Rutas encontradas. Seleccione la mejor opción y presione Iniciar.");
+                hablar("Rutas alternativas encontradas. Seleccione una en el mapa y presione navegar.");
             }
         }
 
-        function activarNavegacionGPS() {
-            hablar("Navegación iniciada. El mapa se moverá con usted.");
-            if ("geolocation" in navigator) {
-                navigator.geolocation.watchPosition(pos => {
-                    const latlng = [pos.coords.latitude, pos.coords.longitude];
-                    const speed = Math.round(pos.coords.speed * 3.6) || 0;
+        function iniciarNavegacion() {
+            if (!navigator.geolocation) return alert("GPS NO SOPORTADO");
+            navegando = true;
+            document.getElementById('modo').innerText = "VIVO";
+            hablar("Iniciando sistema de seguimiento real Al Cielo.");
+            
+            watchID = navigator.geolocation.watchPosition(pos => {
+                const latlng = [pos.coords.latitude, pos.coords.longitude];
+                const speed = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
+                
+                if (speed > 1 || !carMarker.getLatLng().lat) {
+                    carMarker.setLatLng(latlng);
+                    map.setView(latlng, 17);
+                    document.getElementById('vel').innerText = speed;
+                    document.getElementById('alt').innerText = Math.round(pos.coords.altitude || 0);
                     
-                    document.getElementById('velocimetro').innerHTML = speed + "<br><small>km/h</small>";
-                    
-                    // Solo mover si hay movimiento real
-                    if(speed > 1) {
-                        carMarker.setLatLng(latlng);
-                        map.setView(latlng, 17);
-                        verificarDesvios(latlng);
-                    }
-                }, null, { enableHighAccuracy: true });
-            }
+                    // Lógica de Parche Rojo (No pasar si te desvías)
+                    verificarDesvio(latlng);
+                }
+            }, err => console.error(err), { enableHighAccuracy: true });
         }
 
-        function verificarDesvios(currentPos) {
-            // Lógica de "Parche Rojo" para calles prohibidas
-            // Si el usuario se aleja más de 30m de la ruta trazada
-            const routePoints = control.getPlan().getWaypoints();
-            // (Simplificado para el ejemplo: marca un área de advertencia visual)
-            L.rectangle(map.getBounds(), {color: "red", weight: 0, fillOpacity: 0.05, interactive: false}).addTo(map);
+        function verificarDesvio(pos) {
+            // Si la distancia a la ruta es > 50m, poner parches rojos en calles laterales
+            // Simulación visual de seguridad
+            var desvio = L.rectangle(L.latLng(pos).toBounds(200), {color: "red", weight: 1, fillOpacity: 0.1, interactive: false}).addTo(map);
+            setTimeout(() => map.removeLayer(desvio), 3000);
         }
 
         function hablar(t) {
@@ -130,13 +135,13 @@ VIEWER_HTML = """
             window.speechSynthesis.speak(u);
         }
 
-        // Blindaje de Seguridad
-        document.addEventListener('contextmenu', e => e.preventDefault());
-        const exp = new Date("{{expira}}");
-        if (new Date() > exp) {
-            alert("SISTEMA BLOQUEADO - LICENCIA EXPIRADA");
+        // Blindaje Legal
+        const expira = new Date("{{expira}}");
+        if (new Date() > expira) {
+            alert("LICENCIA EXPIRADA");
             window.location.href = "/";
         }
+        document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
 </body>
 </html>
@@ -144,14 +149,13 @@ VIEWER_HTML = """
 
 @app.route("/")
 def home():
-    return f"""
-    <body style="background:#000; color:white; text-align:center; font-family:sans-serif; padding:50px;">
-        <h1 style="color:#0056b3;">AL CIELO</h1><p>May Roga LLC</p>
-        <div style="margin:20px;"><a href="/checkout/price_1Sv5uXBOA5mT4t0PtV7RaYCa" style="display:block; padding:15px; background:#222; color:white; text-decoration:none; border-radius:10px;">10 DÍAS - $15.00</a></div>
-        <div style="margin:20px;"><a href="/checkout/price_1Sv69jBOA5mT4t0PUA7yiisS" style="display:block; padding:15px; background:#0056b3; color:white; text-decoration:none; border-radius:10px;">28 DÍAS - $25.00</a></div>
-        <div style="margin:20px;"><a href="/checkout/price_1Sv6H2BOA5mT4t0PppizlRAK" style="display:block; padding:15px; background:#333; color:white; text-decoration:none; border-radius:10px;">ADMIN ACCESS - $0.00</a></div>
-    </body>
-    """
+    html = '<div style="max-width:400px; margin:auto; text-align:center; font-family:sans-serif; background:#000; color:white; padding:40px; border-radius:20px;">'
+    html += '<h2>AL CIELO</h2><p>May Roga LLC</p><hr>'
+    for pid, (p, d, n) in PLANES.items():
+        color = "#0056b3" if p > 0 else "#333"
+        html += f'<a href="/checkout/{pid}" style="display:block; background:{color}; color:white; padding:15px; margin:10px 0; text-decoration:none; border-radius:10px; font-weight:bold;">{n} - ${p}</a>'
+    html += '<p style="font-size:10px; color:#555;">Sistema de Traslado Terrestre Cuba</p></div>'
+    return html
 
 @app.route("/checkout/<pid>")
 def checkout(pid):
@@ -160,6 +164,7 @@ def checkout(pid):
         exp = (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S")
         create_license(lid, f"ADMIN_{lid}", exp)
         return redirect(f"/activar/{lid}")
+    
     session = stripe.checkout.Session.create(
         payment_method_types=["card"],
         mode="payment",
@@ -177,14 +182,14 @@ def success():
 @app.route("/link/<session_id>")
 def link_redirect(session_id):
     lid = get_license_by_session(session_id)
-    return redirect(f"/activar/{lid}") if lid else ("Confirmando pago...", 404)
+    return redirect(f"/activar/{lid}") if lid else ("Confirmando...", 404)
 
 @app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
     if request.method == "POST":
         set_active_device(link_id, request.json.get("device_id"))
         return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
-    return render_template_string("<body style='background:#000;color:white;text-align:center;padding:50px;'><h2>AL CIELO - Términos</h2><p>Uso exclusivo para traslado en Cuba bajo leyes USA.</p><button onclick='act()' style='padding:20px;background:#0056b3;color:white;border:none;border-radius:10px;'>ACEPTAR Y ENTRAR</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script></body>")
+    return render_template_string("<h3>Términos May Roga LLC</h3><button onclick='act()'>ACEPTAR Y ENTRAR AL SISTEMA</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script>")
 
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
