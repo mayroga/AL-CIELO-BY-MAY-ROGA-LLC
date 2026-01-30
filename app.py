@@ -1,138 +1,170 @@
-import os, uuid, time, stripe
+import os, uuid, stripe, sqlite3
 from flask import Flask, request, jsonify, redirect, render_template_string
 from datetime import datetime, timedelta
-from database import init_db, create_license, get_license_by_link, get_license_by_session, set_active_device
 
 app = Flask(__name__)
+
+# --- CONFIGURACIÓN DE SEGURIDAD MAY ROGA LLC ---
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "sk_test_tu_llave")
+stripe.api_key = STRIPE_SECRET_KEY
+DB_PATH = "data.db"
+
+def init_db():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS licencias 
+            (link_id TEXT PRIMARY KEY, device_id TEXT, expira TEXT, activo INTEGER)""")
 init_db()
 
-# Configuración de May Roga LLC
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
-BASE_URL = "https://al-cielo-by-may-roga-llc.onrender.com"
-stripe.api_key = STRIPE_SECRET_KEY
-
+# --- INTERFAZ DE NAVEGACIÓN "AL CIELO" ---
 VIEWER_HTML = """
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <title>AL CIELO - Navegación</title>
+    <title>AL CIELO - Navegación Total Cuba</title>
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
     <style>
-        body { margin:0; background:#000; font-family:sans-serif; color:white; }
-        #map { height: 75vh; width: 100%; }
-        .ui { height: 25vh; background:#111; padding:10px; display:flex; flex-direction:column; gap:8px; }
-        .row { display:flex; gap:5px; }
-        input { flex:1; padding:10px; border-radius:5px; border:none; background:#222; color:white; font-size:12px; }
-        button { padding:10px; border-radius:5px; border:none; font-weight:bold; cursor:pointer; }
-        .btn-go { background:#28a745; color:white; flex:1; }
-        .btn-del { background:#dc3545; color:white; font-size:10px; }
+        body { margin:0; background:#000; font-family: sans-serif; color:white; overflow:hidden; }
+        #map { height: 65vh; width: 100%; border-bottom: 2px solid #0059b3; }
+        .ui { height: 35vh; background:#111; padding:15px; display:flex; flex-direction:column; gap:10px; }
+        input { width: 92%; padding:12px; border-radius:8px; border:1px solid #333; background:#222; color:white; font-size:16px; }
+        .btn-main { width: 100%; padding:15px; background:#0059b3; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; }
+        .row { display:flex; gap:10px; }
+        .btn-sec { flex:1; padding:10px; background:#333; color:white; border:none; border-radius:5px; font-size:12px; }
+        @media print { .ui { display:none; } #map { height: 100vh; } }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div class="ui">
+        <input id="start" placeholder="Inicio: Ej. Lawton, Habana">
+        <input id="end" placeholder="Fin: Ej. Varadero o Maisí">
+        <button class="btn-main" onclick="trazarRuta()">CALCULAR RUTA ASESORÍA</button>
         <div class="row">
-            <input id="start" placeholder="Inicio (Ej: Lawton, Habana)">
-            <input id="end" placeholder="Destino (Ej: Varadero)">
+            <button class="btn-sec" onclick="window.print()">REPORTE PDF</button>
+            <button class="btn-sec" style="background:#b30000;" onclick="eliminarRastro()">BORRAR DATOS</button>
         </div>
-        <div class="row">
-            <button class="btn-go" onclick="calcularRuta()">ESTABLECER RUTA DE ASESORÍA</button>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <button class="btn-del" onclick="borrar()">BORRAR RASTRO</button>
-            <small style="color:#666;">Expira: {{expira}}</small>
+        <div style="text-align:center; font-size:10px; color:#555;">
+            AL CIELO by May Roga LLC | Jurisdicción USA | Expira: {{expira}}
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
     <script>
-        var map = L.map('map').setView([23.1136, -82.3666], 12);
+        // SEGURIDAD: Auto-destrucción si expira
+        const fechaExp = new Date("{{expira}}");
+        if (new Date() > fechaExp) {
+            alert("Licencia Expirada. Contacte a May Roga LLC.");
+            localStorage.clear();
+            window.location.href = "/";
+        }
+
+        // Mapa centrado en Cuba (Toda la isla)
+        var map = L.map('map').setView([21.5218, -77.7812], 6);
         
-        // Capa Híbrida: Busca local, si falla usa satélite/osm
-        var localLayer = L.tileLayer('/static/maps/cuba_tiles/{z}/{x}/{y}.png', { maxZoom: 18 });
-        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        // Capas Híbridas (Protección Offline)
+        L.tileLayer('/static/maps/cuba_tiles/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
         var control = L.Routing.control({
             waypoints: [],
-            routeWhileDragging: true,
-            lineOptions: { styles: [{color: '#00ff00', opacity: 0.8, weight: 6}] },
-            createMarker: function() { return null; } // Limpieza visual
+            router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+            lineOptions: { styles: [{color: '#00ff00', weight: 6}] },
+            language: 'es'
         }).addTo(map);
 
-        async function geocode(addr) {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${addr},Cuba`);
-            const data = await res.json();
-            return data.length > 0 ? L.latLng(data[0].lat, data[0].lon) : null;
-        }
+        async function trazarRuta() {
+            const s = document.getElementById('start').value;
+            const e = document.getElementById('end').value;
+            if(!s || !e) return;
 
-        async function calcularRuta() {
-            const sAddr = document.getElementById('start').value;
-            const eAddr = document.getElementById('end').value;
-            
-            if(!sAddr || !eAddr) { alert("Indique Inicio y Destino"); return; }
-            
-            const p1 = await geocode(sAddr);
-            const p2 = await geocode(eAddr);
-            
-            if(p1 && p2) {
+            const res1 = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${s},Cuba`).then(r=>r.json());
+            const res2 = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${e},Cuba`).then(r=>r.json());
+
+            if(res1[0] && res2[0]) {
+                const p1 = L.latLng(res1[0].lat, res1[0].lon);
+                const p2 = L.latLng(res2[0].lat, res2[0].lon);
                 control.setWaypoints([p1, p2]);
                 map.fitBounds([p1, p2]);
-                hablar("Ruta calculada de " + sAddr + " hacia " + eAddr);
-            } else {
-                alert("No se encontraron las ubicaciones. Intente ser más específico.");
-            }
+                hablar("Ruta de asesoría calculada correctamente.");
+            } else { alert("Ubicación no encontrada."); }
         }
 
         function hablar(t) {
             var m = new SpeechSynthesisUtterance(t);
-            m.lang = 'es-US';
-            window.speechSynthesis.speak(m);
+            m.lang = 'es-US'; window.speechSynthesis.speak(m);
         }
 
-        function borrar() {
-            if(confirm("¿Borrar historial de navegación?")) {
+        function eliminarRastro() {
+            if(confirm("¿Borrar historial de May Roga LLC?")) {
+                caches.delete('al-cielo-map-v1');
                 localStorage.clear();
                 window.location.href = "/";
             }
         }
+
+        // Anticopia
+        document.addEventListener('contextmenu', e => e.preventDefault());
     </script>
 </body>
 </html>
 """
 
+# --- RUTAS DE LA APP ---
+
 @app.route("/")
-def home():
-    return f"""
-    <body style="text-align:center; padding:50px; font-family:sans-serif; background:#f4f4f4;">
-        <h1>AL CIELO</h1>
-        <div style="margin:20px;"><a href="/checkout/price_15" style="display:block; padding:20px; background:blue; color:white; text-decoration:none; border-radius:10px;">10 Días - $15.00</a></div>
-        <div style="margin:20px;"><a href="/checkout/price_25" style="display:block; padding:20px; background:green; color:white; text-decoration:none; border-radius:10px;">28 Días - $25.00</a></div>
-        <p>May Roga LLC - Asesoría de Carga y Navegación</p>
+def index():
+    return """
+    <body style="text-align:center; font-family:sans-serif; padding-top:100px; background:#f4f4f4;">
+        <h1 style="color:#0059b3;">AL CIELO</h1>
+        <p>Asesoría Profesional de Navegación - May Roga LLC</p>
+        <div style="margin:20px;"><a href="/pay/15" style="padding:15px 30px; background:blue; color:white; text-decoration:none; border-radius:5px;">10 DÍAS - $15.00</a></div>
+        <div style="margin:20px;"><a href="/pay/25" style="padding:15px 30px; background:green; color:white; text-decoration:none; border-radius:5px;">28 DÍAS - $25.00</a></div>
     </body>
     """
 
-@app.route("/checkout/<pid>")
-def checkout(pid):
-    # Lógica de Stripe simplificada para el ejemplo
+@app.route("/pay/<int:price>")
+def pay(price):
     link_id = str(uuid.uuid4())[:8]
-    exp = (datetime.utcnow() + timedelta(days=10 if "15" in pid else 28)).strftime("%Y-%m-%d")
-    create_license(link_id, f"PAY_{link_id}", exp)
+    dias = 10 if price == 15 else 28
+    expira = (datetime.now() + timedelta(days=dias)).strftime("%Y-%m-%d")
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("INSERT INTO licencias VALUES (?, ?, ?, ?)", (link_id, None, expira, 1))
     return redirect(f"/activar/{link_id}")
 
-@app.route("/activar/<link_id>", methods=["GET", "POST"])
+@app.route("/activar/<link_id>")
 def activar(link_id):
-    if request.method == "POST":
-        set_active_device(link_id, request.json.get("device_id"))
-        return jsonify({"map_url": f"/viewer/{link_id}"})
-    return render_template_string("<h2>Acepto Términos May Roga LLC</h2><button onclick='act()'>Activar</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script>")
+    return render_template_string("""
+        <body style="text-align:center; padding:50px;">
+            <h2>Activar Asesoría AL CIELO</h2>
+            <p>Al presionar activar, este dispositivo quedará registrado.</p>
+            <button onclick="act()" style="padding:20px; background:blue; color:white;">ACTIVAR AHORA</button>
+            <script>
+                function act(){
+                    fetch('/registro/{{id}}', {method:'POST'})
+                    .then(() => window.location.href='/viewer/{{id}}');
+                }
+            </script>
+        </body>
+    """, id=link_id)
+
+@app.route("/registro/<link_id>", methods=["POST"])
+def registro(link_id):
+    # En producción usaríamos un ID real del dispositivo
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("UPDATE licencias SET device_id='ACTIVO' WHERE link_id=?", (link_id,))
+    return jsonify({"status": "ok"})
 
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
-    lic = get_license_by_link(link_id)
-    return render_template_string(VIEWER_HTML, expira=lic[1])
+    with sqlite3.connect(DB_PATH) as conn:
+        lic = conn.execute("SELECT expira FROM licencias WHERE link_id=?", (link_id,)).fetchone()
+    if lic:
+        return render_template_string(VIEWER_HTML, expira=lic[0])
+    return "Enlace Inválido", 404
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
