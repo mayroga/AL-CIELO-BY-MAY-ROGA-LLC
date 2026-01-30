@@ -9,28 +9,20 @@ def get_conn():
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
-    # Licencias
+    # Tabla de Licencias reforzada con consentimiento legal
     cur.execute("""
     CREATE TABLE IF NOT EXISTS licenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         link_id TEXT UNIQUE,
         session_id TEXT UNIQUE,
         expires_at TEXT,
-        active_device TEXT
-    )
-    """)
-    # Dispositivos
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS devices (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        link_id TEXT,
-        device_id TEXT
+        active_device TEXT,
+        legal_accepted INTEGER DEFAULT 0
     )
     """)
     conn.commit()
     conn.close()
 
-# --- LICENCIAS ---
 def create_license(link_id, session_id, expires_at):
     conn = get_conn()
     cur = conn.cursor()
@@ -57,25 +49,10 @@ def get_license_by_session(session_id):
     conn.close()
     return row[0] if row else None
 
-# --- DISPOSITIVOS ---
-def get_devices(link_id):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT device_id FROM devices WHERE link_id=?", (link_id,))
-    rows = cur.fetchall()
-    conn.close()
-    return [r[0] for r in rows]
-
-def add_device(link_id, device_id):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("INSERT INTO devices (link_id, device_id) VALUES (?,?)", (link_id, device_id))
-    conn.commit()
-    conn.close()
-
 def set_active_device(link_id, device_id):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("UPDATE licenses SET active_device=? WHERE link_id=?", (device_id, link_id))
+    # El nuevo dispositivo toma el control total (Regla de May Roga LLC)
+    cur.execute("UPDATE licenses SET active_device=?, legal_accepted=1 WHERE link_id=?", (device_id, link_id))
     conn.commit()
     conn.close()
