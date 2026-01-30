@@ -4,7 +4,15 @@ import stripe
 from flask import Flask, request, jsonify, render_template_string, redirect
 from datetime import datetime, timedelta
 
-from database import init_db, create_license, get_license_by_link, get_license_by_session, get_devices, add_device, set_active_device
+from database import (
+    init_db,
+    create_license,
+    get_license_by_link,
+    get_license_by_session,
+    get_devices,
+    add_device,
+    set_active_device
+)
 
 app = Flask(__name__)
 init_db()
@@ -16,50 +24,45 @@ BASE_URL = "https://al-cielo-by-may-roga-llc.onrender.com"
 
 stripe.api_key = STRIPE_SECRET_KEY
 
-# ================= PLANES POR PRICE ID =================
+# ================= PLANES =================
 PLANES = {
     "price_1Sv5uXBOA5mT4t0PtV7RaYCa": 10,  # $15 / 10 días
     "price_1Sv69jBOA5mT4t0PUA7yiisS": 28,  # $25 / 28 días
-    "price_1Sv6H2BOA5mT4t0PppizlRAK": 20   # Admin 0$ / 20 días
+    "price_1Sv6H2BOA5mT4t0PppizlRAK": 20   # $0 / 20 días (Admin)
+}
+
+LINKS_STRIPE = {
+    "price_1Sv5uXBOA5mT4t0PtV7RaYCa": "https://buy.stripe.com/price_1Sv5uXBOA5mT4t0PtV7RaYCa",
+    "price_1Sv69jBOA5mT4t0PUA7yiisS": "https://buy.stripe.com/price_1Sv69jBOA5mT4t0PUA7yiisS",
+    "price_1Sv6H2BOA5mT4t0PppizlRAK": "https://buy.stripe.com/price_1Sv6H2BOA5mT4t0PppizlRAK"
 }
 
 # ================= HOME =================
 @app.route("/")
 def home():
-    return """
-    <h2>AL CIELO by May Roga LLC</h2>
-    <p>Compra tu acceso y recibe tu activación automática.</p>
-    <ul>
-      <li><a href="https://buy.stripe.com/bJe8wOaof8dR7sXaPF7Vm0k">$0.50 / 10 días (test)</a></li>
-      <li><a href="https://buy.stripe.com/dRm6oG8g7cu76oT1f57Vm0i">$15 / 10 días</a></li>
-      <li><a href="https://buy.stripe.com/14A3cudArfGj9B51f57Vm0j">$25 / 28 días</a></li>
-    </ul>
-    """
+    html = "<h2>AL CIELO by May Roga LLC</h2><p>Compra tu acceso y recibe tu activación automática:</p><ul>"
+    for pid, url in LINKS_STRIPE.items():
+        html += f'<li><a href="{url}">{url.split("/")[-1]}</a></li>'
+    html += "</ul>"
+    return html
 
 # ================= STRIPE WEBHOOK =================
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
     payload = request.data
-    sig_header = request.headers.get("Stripe-Signature")
+    sig = request.headers.get("Stripe-Signature")
 
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except Exception:
         return jsonify({"error": "Webhook inválido"}), 400
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        session_id = session.get("id")
+        session_id = session["id"]
+        price_id = session["line_items"]["data"][0]["price"]["id"] if "line_items" in session else None
 
-        # Obtener el Price ID de la compra
-        line_items = stripe.checkout.Session.list_line_items(session_id)
-        dias = 10  # fallback
-        for item in line_items.data:
-            price_id = item.price.id
-            if price_id in PLANES:
-                dias = PLANES[price_id]
-
-        # Crear licencia
+        dias = PLANES.get(price_id, 10)
         link_id = str(uuid.uuid4())[:8]
         expira = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -68,7 +71,7 @@ def stripe_webhook():
 
     return jsonify({"ok": True})
 
-# ================= REDIRECCIÓN POST PAGO =================
+# ================= REDIRECCIÓN =================
 @app.route("/link/<session_id>")
 def link_redirect(session_id):
     link_id = get_license_by_session(session_id)
@@ -83,11 +86,7 @@ def activar(link_id):
     if not lic:
         return "Licencia inválida o vencida", 404
 
-    _, expira, active_device = lic
-
-    # Validar expiración
-    if datetime.utcnow() > datetime.strptime(expira, "%Y-%m-%d %H:%M:%S"):
-        return "Licencia expirada", 403
+    _, expira, _ = lic
 
     if request.method == "POST":
         data = request.json
@@ -98,7 +97,6 @@ def activar(link_id):
             return jsonify({"error": "Debe aceptar términos legales"}), 403
 
         devices = get_devices(link_id)
-
         if device_id not in devices:
             if len(devices) >= 2:
                 return jsonify({"error": "Máximo 2 dispositivos permitidos"}), 403
@@ -117,11 +115,8 @@ def activar(link_id):
     <p>Licencia válida hasta: {{expira}}</p>
     <p>Máx. 2 dispositivos · Solo 1 activo</p>
 
-    <p><b>Blindaje legal:</b> El mapa se descarga por el usuario para uso privado. 
-    May Roga LLC no controla uso posterior ni redistribución.</p>
-
     <label>
-      <input type="checkbox" id="legal"> Acepto términos legales
+      <input type="checkbox" id="legal"> Acepto términos
     </label><br><br>
 
     <button onclick="activar()">Activar</button>
@@ -132,13 +127,13 @@ def activar(link_id):
         alert("Debe aceptar los términos");
         return;
       }
-      const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
-      localStorage.setItem("device_id", device_id);
+      const id = localStorage.getItem("device_id") || crypto.randomUUID();
+      localStorage.setItem("device_id", id);
 
       const res = await fetch("", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({device_id:device_id, legal_ok:true})
+        body:JSON.stringify({device_id:id, legal_ok:true})
       });
       const data = await res.json();
       if(res.ok){
