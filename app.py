@@ -1,18 +1,9 @@
 import os
 import uuid
-import stripe
-from flask import Flask, request, jsonify, render_template_string, redirect
 from datetime import datetime, timedelta
-
-from database import (
-    init_db,
-    create_license,
-    get_license_by_link,
-    get_license_by_session,
-    get_devices,
-    add_device,
-    set_active_device
-)
+from flask import Flask, request, jsonify, redirect, render_template_string, send_from_directory
+import stripe
+from database import init_db, create_license, get_license_by_link, get_license_by_session, get_devices, add_device, set_active_device
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 init_db()
@@ -20,9 +11,7 @@ init_db()
 # ================= ENV =================
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-BASE_URL = "https://al-cielo-by-may-roga-llc.onrender.com"
-TILESERVER_URL = "https://al-cielo-by-may-roga-llc.onrender.com:8080"  # PMTiles TileServer URL
-
+BASE_URL = os.getenv("BASE_URL", "https://al-cielo-by-may-roga-llc.onrender.com")
 stripe.api_key = STRIPE_SECRET_KEY
 
 # ================= PLANES =================
@@ -35,11 +24,7 @@ PLANES = {
 # ================= HOME =================
 @app.route("/")
 def home():
-    html = """
-    <h2>AL CIELO by May Roga LLC</h2>
-    <p>Compra tu acceso y recibe tu activación automática:</p>
-    <ul>
-    """
+    html = "<h2>AL CIELO by May Roga LLC</h2><p>Compra tu acceso y recibe tu activación automática:</p><ul>"
     for price_id, (precio, dias, desc) in PLANES.items():
         html += f'<li><a href="https://buy.stripe.com/{price_id}" target="_blank">{desc} – ${precio} / {dias} días</a></li>'
     html += "</ul>"
@@ -66,7 +51,6 @@ def stripe_webhook():
         expira = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
         create_license(link_id, session_id, expira)
         print(f"✅ LICENCIA CREADA: {link_id} – Price ID: {price_id}")
-
     return jsonify({"ok": True})
 
 # ================= REDIRECCIÓN =================
@@ -90,7 +74,6 @@ def activar(link_id):
         data = request.json
         device_id = data.get("device_id")
         legal_ok = data.get("legal_ok")
-
         if not legal_ok:
             return jsonify({"error": "Debe aceptar términos legales"}), 403
 
@@ -99,23 +82,20 @@ def activar(link_id):
             if len(devices) >= 2:
                 return jsonify({"error": "Máximo 2 dispositivos permitidos"}), 403
             add_device(link_id, device_id)
-
         set_active_device(link_id, device_id)
 
         return jsonify({
             "status": "OK",
             "expira": expira,
-            "map_url": f"{BASE_URL}/mapa/{link_id}"
+            "map_url": f"{BASE_URL}/viewer/{link_id}"  # En lugar de enviar .mbtiles
         })
 
     return render_template_string("""
     <h2>AL CIELO – Activación</h2>
     <p>Licencia válida hasta: {{expira}}</p>
     <p>Máx. 2 dispositivos · Solo 1 activo</p>
-    <p><b>Blindaje legal:</b> Uso exclusivo del mapa en streaming, sin descarga. Redistribución prohibida.</p>
-    <label>
-      <input type="checkbox" id="legal"> Acepto términos
-    </label><br><br>
+    <p><b>Blindaje legal:</b> Uso privado del mapa. No se entrega copia.</p>
+    <label><input type="checkbox" id="legal"> Acepto términos</label><br><br>
     <button onclick="activar()">Activar</button>
 
     <script>
@@ -142,66 +122,36 @@ def activar(link_id):
     </script>
     """, expira=expira)
 
-# ================= MAPA STREAMING =================
-@app.route("/mapa/<link_id>")
-def mapa(link_id):
+# ================= TILESERVER / VIEWER =================
+@app.route("/viewer/<link_id>")
+def viewer(link_id):
     lic = get_license_by_link(link_id)
     if not lic:
-        return "Acceso no autorizado", 403
+        return "Licencia inválida o vencida", 404
 
+    # Vista web para streaming de mapas sin descargar
     return render_template_string("""
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>AL CIELO – Mapa Cuba</title>
-  <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
-  <style>
-    html, body, #map { margin:0; padding:0; width:100%; height:100vh; }
-  </style>
-</head>
-<body>
-<div id="map"></div>
-<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
-<script>
-const map = new maplibregl.Map({
-    container: "map",
-    style: {
-        version: 8,
-        sources: {
-            cuba: {
-                type: "raster",
-                tiles: ["{{tiles_url}}/tiles/{z}/{x}/{y}.png"],
-                tileSize: 256
-            }
-        },
-        layers: [{
-            id: "cuba",
-            type: "raster",
-            source: "cuba"
-        }]
-    },
-    center: [-79.5, 21.5],
-    zoom: 6
-});
-
-// Navegación por voz básica
-function speak(text){ 
-    const msg = new SpeechSynthesisUtterance(text);
-    msg.lang = 'es-ES';
-    window.speechSynthesis.speak(msg);
-}
-
-// Ejemplo de recalculo (mock)
-map.on('moveend', () => {
-    // Aquí podrías calcular si el usuario se desvió y dar aviso
-    // speak("Recalculando ruta...");
-});
-</script>
-</body>
-</html>
-""", tiles_url=TILESERVER_URL)
+    <h2>Mapa AL CIELO – Cuba</h2>
+    <p>Uso exclusivo privado – No se entrega copia</p>
+    <div id="map" style="width:100%;height:80vh;"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script>
+    var map = L.map('map').setView([21.5, -79.0], 6);
+    L.tileLayer('/tiles/{z}/{x}/{y}.pbf', {maxZoom:14, tms:false}).addTo(map);
+    </script>
+    """)
+    
+# ================= TILE SERVER PBF =================
+@app.route("/tiles/<int:z>/<int:x>/<int:y>.pbf")
+def serve_tile(z,x,y):
+    # Entrega tiles directamente, sin descargar mapa completo
+    tile_path = f"static/maps/{z}_{x}_{y}.pbf"
+    if not os.path.exists(tile_path):
+        return "", 204
+    return send_from_directory("static/maps", f"{z}_{x}_{y}.pbf")
 
 # ================= RUN =================
 if __name__ == "__main__":
+    os.makedirs("static/maps", exist_ok=True)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
