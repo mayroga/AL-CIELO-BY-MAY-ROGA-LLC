@@ -52,7 +52,7 @@ def checkout(price_id):
 @app.route("/success")
 def success():
     session_id = request.args.get("session_id")
-    time.sleep(5)  # espera para que la licencia se genere
+    time.sleep(5)
     return redirect(f"/link/{session_id}")
 
 @app.route("/link/<session_id>")
@@ -66,7 +66,7 @@ def link_redirect(session_id):
 def activar(link_id):
     lic = get_license_by_link(link_id)
     if not lic: return "Licencia inválida", 404
-    expira = lic[1] 
+    expira = lic[1]
 
     if request.method == "POST":
         data = request.json
@@ -94,7 +94,6 @@ def activar(link_id):
         </script>
     """, expira=expira)
 
-# VISOR DE MAPA CON NAVEGACIÓN, VOZ Y BUSCADOR
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
     lic = get_license_by_link(link_id)
@@ -102,12 +101,13 @@ def viewer(link_id):
     expira = lic[1]
 
     return render_template_string("""
-    <h3>AL CIELO – Mapas de Cuba</h3>
+    <h3>AL CIELO – Navegador de Cuba</h3>
     <p>Licencia válida hasta: {{expira}}</p>
     <p><b>Uso privado:</b> El mapa solo puede visualizarse. No se permite descargar.</p>
-    <input type="text" id="direccion" placeholder="Buscar dirección..." style="width:60%;padding:5px;"/>
-    <button onclick="buscarDireccion()">Buscar</button>
-    <div id="map" style="height:80vh;"></div>
+    <div id="map" style="height:90vh;"></div>
+    <input id="start" placeholder="Dirección de inicio" style="width:45%; margin-top:5px;">
+    <input id="end" placeholder="Destino" style="width:45%; margin-top:5px;">
+    <button onclick="calcularRuta()">Calcular Ruta</button>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -115,45 +115,57 @@ def viewer(link_id):
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
     <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
-    
+
     <script>
-      var map = L.map('map').setView([21.5, -79], 7);
+        var map = L.map('map').setView([21.5, -79.0], 7);
 
-      // Tile layer streaming desde tu servidor o CDN
-      L.tileLayer('/tiles/{z}/{x}/{y}.png', {
-          attribution: 'AL CIELO by May Roga LLC',
-          maxZoom: 18
-      }).addTo(map);
+        // Tile layer desde OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: 'AL CIELO by May Roga LLC',
+            maxZoom: 18
+        }).addTo(map);
 
-      // Routing
-      var control = L.Routing.control({
-          waypoints: [],
-          routeWhileDragging: true,
-          geocoder: L.Control.Geocoder.nominatim({geocodingQueryParams:{language:'es'}}),
-          showAlternatives: true
-      }).addTo(map);
+        var control = null;
 
-      // Función de búsqueda
-      function buscarDireccion(){
-          var direccion = document.getElementById("direccion").value;
-          if(!direccion) return;
-          fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(direccion)}&countrycodes=CU&limit=1`)
-          .then(res => res.json())
-          .then(data => {
-              if(data.length==0){ alert("No encontrado"); return; }
-              var latlng = [data[0].lat, data[0].lon];
-              map.setView(latlng, 16);
-              L.marker(latlng).addTo(map);
+        function calcularRuta(){
+            var start = document.getElementById("start").value;
+            var end = document.getElementById("end").value;
+            if(!start || !end){ alert("Ingresa inicio y destino"); return; }
 
-              // voz en español
-              var utter = new SpeechSynthesisUtterance("Dirígete a " + direccion);
-              utter.lang = 'es-ES';
-              speechSynthesis.speak(utter);
-          });
-      }
+            // Geocodificación de direcciones
+            var geocoder = L.Control.Geocoder.nominatim();
+            geocoder.geocode(start, function(resultsStart){
+                if(resultsStart.length === 0){ alert("Inicio no encontrado"); return; }
+                var latlngStart = resultsStart[0].center;
 
-      // Prevención descarga
-      map.getContainer().addEventListener('contextmenu', function(e){ e.preventDefault(); });
+                geocoder.geocode(end, function(resultsEnd){
+                    if(resultsEnd.length === 0){ alert("Destino no encontrado"); return; }
+                    var latlngEnd = resultsEnd[0].center;
+
+                    if(control) map.removeControl(control);
+                    control = L.Routing.control({
+                        waypoints: [latlngStart, latlngEnd],
+                        routeWhileDragging: true,
+                        language: 'es',
+                        showAlternatives: true
+                    }).addTo(map);
+
+                    // Voz en español
+                    control.on('routesfound', function(e){
+                        var steps = e.routes[0].instructions;
+                        if(!steps) return;
+                        steps.forEach(function(step){
+                            var utter = new SpeechSynthesisUtterance(step.text);
+                            utter.lang = 'es-ES';
+                            speechSynthesis.speak(utter);
+                        });
+                    });
+                });
+            });
+        }
+
+        // Prevención descarga y menú derecho
+        map.getContainer().addEventListener('contextmenu', function(e){ e.preventDefault(); });
     </script>
     """, expira=expira)
 
