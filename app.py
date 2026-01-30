@@ -52,8 +52,8 @@ def checkout(price_id):
 @app.route("/success")
 def success():
     session_id = request.args.get("session_id")
-    # Reducción de tiempo a 5s para mayor agilidad
-    time.sleep(5) 
+    # Espera 10-15s para que el sistema cree la licencia
+    time.sleep(12) 
     return redirect(f"/link/{session_id}")
 
 @app.route("/link/<session_id>")
@@ -79,6 +79,7 @@ def activar(link_id):
     return render_template_string("""
         <h3>Activación AL CIELO</h3>
         <p>Expira: {{expira}}</p>
+        <p><b>Uso privado:</b> Solo para el dispositivo registrado. No se permite descargar el mapa.</p>
         <button onclick="activar()">ACTIVAR SERVICIO</button>
         <script>
         async function activar(){
@@ -99,15 +100,60 @@ def activar(link_id):
 def viewer(link_id):
     lic = get_license_by_link(link_id)
     if not lic: return "Acceso Denegado", 403
+
+    expira = lic[1]
+
+    # Viewer actualizado para navegación tipo Google
     return render_template_string("""
+        <h3>AL CIELO – Visualizador de Cuba</h3>
+        <p>Licencia válida hasta: {{expira}}</p>
+        <p><b>Uso privado:</b> No se permite descargar ni redistribuir el contenido.</p>
+        <input id="direccion" placeholder="Escribe dirección en Cuba" style="width: 60%; padding:5px"/>
+        <button onclick="buscar()">Ir</button>
+        <div id="map" style="height:85vh;"></div>
+
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <div id="map" style="height: 100vh;"></div>
+        <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+        <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
         <script>
-            var map = L.map('map').setView([21.5, -79.0], 7);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map); // Mapa base
+            var map = L.map('map').setView([21.5, -79], 7);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: 'AL CIELO by May Roga LLC',
+                maxZoom: 18
+            }).addTo(map);
+
+            var control = L.Routing.control({
+                waypoints: [],
+                routeWhileDragging: true,
+                geocoder: L.Control.Geocoder.nominatim(),
+                showAlternatives: true
+            }).addTo(map);
+
+            function buscar(){
+                var direccion = document.getElementById("direccion").value;
+                if(!direccion) return alert("Escribe una dirección en Cuba");
+                // Geocoding
+                fetch('https://nominatim.openstreetmap.org/search?format=json&q='+direccion+'+Cuba')
+                .then(res=>res.json())
+                .then(data=>{
+                    if(data.length==0) return alert("No se encontró la dirección");
+                    var lat = parseFloat(data[0].lat);
+                    var lon = parseFloat(data[0].lon);
+                    var waypoint = L.latLng(lat, lon);
+                    control.setWaypoints([map.getCenter(), waypoint]);
+                    map.setView(waypoint, 14);
+                    // Voz de navegación
+                    var utter = new SpeechSynthesisUtterance("Dirigiéndose a " + direccion);
+                    speechSynthesis.speak(utter);
+                });
+            }
+
+            // Desactivar clic derecho para blindaje legal
+            map.getContainer().addEventListener('contextmenu', function(e){ e.preventDefault(); });
         </script>
-    """)
+    """, expira=expira)
 
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
