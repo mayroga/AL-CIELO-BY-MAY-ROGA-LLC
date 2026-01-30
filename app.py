@@ -6,7 +6,6 @@ from flask import Flask, request, jsonify, redirect, render_template_string
 from datetime import datetime, timedelta
 from database import init_db, create_license, get_license_by_link, get_license_by_session, add_device, set_active_device
 
-# ================= CONFIGURACIÓN =================
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 init_db()
 
@@ -22,25 +21,18 @@ PLANES = {
     "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Acceso Admin (Bypass)"]
 }
 
-# ================= RUTAS DE ACCESO =================
 @app.route("/")
 def home():
-    html = """
-    <body style="font-family:sans-serif; text-align:center; padding:50px;">
-        <h2>AL CIELO by May Roga LLC</h2>
-        <p>Seleccione su plan para activar la asesoría y el mapa:</p>
-        <div style="display:inline-block; text-align:left;">
-    """
+    html = """<h2>AL CIELO by May Roga LLC</h2><ul>"""
     for price_id, (precio, dias, desc) in PLANES.items():
-        html += f'<p>• <a href="/checkout/{price_id}" style="text-decoration:none; font-weight:bold; color:#007bff;">{desc} – ${precio} USD</a></p>'
-    html += "</div></body>"
+        html += f'<li><a href="/checkout/{price_id}">{desc} – ${precio} / {dias} días</a></li>'
+    html += "</ul>"
     return html
 
 @app.route("/checkout/<price_id>")
 def checkout(price_id):
-    if price_id not in PLANES: return "Plan no válido", 404
+    if price_id not in PLANES: return "Error", 404
     
-    # BYPASS DIRECTO PARA ADMIN
     if price_id == "price_1Sv6H2BOA5mT4t0PppizlRAK":
         link_id = str(uuid.uuid4())[:8]
         expira = (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S")
@@ -59,125 +51,133 @@ def checkout(price_id):
 @app.route("/success")
 def success():
     session_id = request.args.get("session_id")
-    time.sleep(5) # Tiempo para que el webhook procese
+    time.sleep(5)  # espera 5 segundos antes de continuar
     return redirect(f"/link/{session_id}")
 
 @app.route("/link/<session_id>")
 def link_redirect(session_id):
     link_id = get_license_by_session(session_id)
     if not link_id:
-        return "<h3>Procesando licencia...</h3><script>setTimeout(()=>location.reload(), 5000);</script>", 404
+        return "Confirmando pago con Stripe... Refresca en 5 segundos.", 404
     return redirect(f"/activar/{link_id}")
 
 @app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
     lic = get_license_by_link(link_id)
-    if not lic: return "Enlace expirado o inválido", 404
-    
+    if not lic: return "Licencia inválida", 404
+    expira = lic[1]
+
     if request.method == "POST":
         data = request.json
-        if not data.get("legal_ok"): return jsonify({"error": "Debe aceptar términos"}), 403
-        set_active_device(link_id, data.get("device_id"))
+        if not data.get("legal_ok"): return jsonify({"error": "Acepta términos"}), 403
+        device_id = data.get("device_id")
+        set_active_device(link_id, device_id)
         return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
 
     return render_template_string("""
-        <body style="font-family:sans-serif; padding:30px;">
-            <h3>Activación de Servicio - AL CIELO</h3>
-            <p>Su acceso vence el: <b>{{expira}}</b></p>
-            <label><input type="checkbox" id="legal"> Acepto el blindaje legal (Residente/Ciudadano USA)</label><br><br>
-            <button onclick="activar()" style="padding:10px 20px; background:#28a745; color:white; border:none; border-radius:5px; cursor:pointer;">ACTIVAR AHORA</button>
-            <script>
-            async function activar(){
-                if(!document.getElementById("legal").checked) return alert("Acepte términos");
-                const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
-                localStorage.setItem("device_id", device_id);
-                const res = await fetch("", {
-                    method:"POST",
-                    headers:{"Content-Type":"application/json"},
-                    body:JSON.stringify({device_id:device_id, legal_ok:true})
-                });
-                const data = await res.json();
-                if(res.ok) window.location.href = data.map_url;
-            }
-            </script>
-        </body>
-    """, expira=lic[1])
+        <h3>Activación AL CIELO</h3>
+        <p>Expira: {{expira}}</p>
+        <button onclick="activar()">ACTIVAR SERVICIO</button>
+        <script>
+        async function activar(){
+            const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
+            localStorage.setItem("device_id", device_id);
+            const res = await fetch("", {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({device_id:device_id, legal_ok:true})
+            });
+            const data = await res.json();
+            if(res.ok) window.location.href = data.map_url;
+        }
+        </script>
+    """, expira=expira)
 
-# ================= VISOR GOOGLE MAPS STYLE =================
+# ==================== VISOR DE MAPA ESTILO GOOGLE ====================
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
     lic = get_license_by_link(link_id)
     if not lic: return "Acceso Denegado", 403
+    expira = lic[1]
+
     return render_template_string("""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>AL CIELO - Mapa Profesional</title>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-            <style>
-                body { margin: 0; padding: 0; }
-                #map { height: 100vh; width: 100vw; }
-                .admin-panel { position: absolute; top: 10px; right: 10px; z-index: 1000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
-            </style>
-        </head>
-        <body>
-            <div class="admin-panel">
-                <b>AL CIELO</b><br>
-                <small>Vence: {{expira}}</small><br>
-                <button onclick="location.href='/'" style="margin-top:5px; font-size:10px;">Cerrar</button>
-            </div>
-            <div id="map"></div>
-            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-            <script>
-                var map = L.map('map', { center: [21.5, -79.0], zoom: 7 });
+    <h3>AL CIELO – Mapa de Cuba</h3>
+    <p>Licencia válida hasta: {{expira}}</p>
+    <p><b>Uso privado:</b> Solo visualización. No se permite descargar.</p>
+    <div id="map" style="height:90vh;"></div>
 
-                // Capas tipo Google Maps
-                var googleSat = L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}',{
-                    maxZoom: 20,
-                    subdomains:['mt0','mt1','mt2','mt3']
-                });
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
 
-                var googleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',{
-                    maxZoom: 20,
-                    subdomains:['mt0','mt1','mt2','mt3']
-                });
+    <script>
+      var map = L.map('map').setView([21.5, -79], 7);
 
-                // Capa Offline Local (Si existe el mbtiles procesado)
-                var localCuba = L.tileLayer('/static/maps/cuba/{z}/{x}/{y}.png', {
-                    maxZoom: 18,
-                    tms: true,
-                    attribution: 'AL CIELO Offline'
-                });
+      // Tile layer Cuba (OpenStreetMap)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: 'AL CIELO by May Roga LLC',
+          maxZoom: 18
+      }).addTo(map);
 
-                googleSat.addTo(map); // Inicia con Satélite Híbrido
+      // Routing (inicio y destino que el cliente elige)
+      var control = L.Routing.control({
+          waypoints: [],
+          routeWhileDragging: true,
+          geocoder: L.Control.Geocoder.nominatim({geocodingQueryParams:{language:"es"}}),
+          showAlternatives: true,
+          createMarker: function(i, wp, nWps) {
+              return L.marker(wp.latLng, {draggable:true});
+          }
+      }).addTo(map);
 
-                var baseMaps = {
-                    "Satélite (Google)": googleSat,
-                    "Calles (Google)": googleStreets,
-                    "Offline Local": localCuba
-                };
+      // Función para agregar ruta desde input
+      function agregarRuta(){
+          var inicio = prompt("Ingrese dirección de inicio:");
+          var destino = prompt("Ingrese dirección de destino:");
+          if(inicio && destino){
+              control.setWaypoints([inicio, destino]);
+          }
+      }
 
-                L.control.layers(baseMaps).addTo(map);
-            </script>
-        </body>
-        </html>
-    """, expira=lic[1])
+      // Botón en pantalla
+      var btn = L.control({position: 'topright'});
+      btn.onAdd = function(map){
+          var div = L.DomUtil.create('div', 'leaflet-bar');
+          div.innerHTML = '<button onclick="agregarRuta()">Ir a Destino</button>';
+          return div;
+      }
+      btn.addTo(map);
 
-# ================= WEBHOOK =================
+      // Voz en español para instrucciones
+      map.on('routeselected', function(e){
+          var steps = e.route.instructions || [];
+          steps.forEach(function(step){
+              var utter = new SpeechSynthesisUtterance(step.text);
+              utter.lang = 'es-ES';
+              speechSynthesis.speak(utter);
+          });
+      });
+
+      // Bloqueo descarga
+      map.getContainer().addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    </script>
+    """, expira=expira)
+# ==================== FIN VISOR =======================================
+
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
     payload = request.data
     sig = request.headers.get("Stripe-Signature")
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-    except Exception as e: return str(e), 400
+    except: return "Error", 400
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        items = stripe.checkout.Session.list_line_items(session["id"])
-        price_id = items.data[0].price.id
+        price_id = stripe.checkout.Session.list_line_items(session["id"]).data[0].price.id
         dias = PLANES.get(price_id, [0, 10])[1]
         link_id = str(uuid.uuid4())[:8]
         expira = (datetime.utcnow() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
