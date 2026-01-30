@@ -1,170 +1,186 @@
-import os, uuid, stripe, sqlite3
+import os, uuid, time, stripe
 from flask import Flask, request, jsonify, redirect, render_template_string
 from datetime import datetime, timedelta
+from database import init_db, create_license, get_license_by_link, get_license_by_session, set_active_device
 
-app = Flask(__name__)
-
-# --- CONFIGURACIÓN DE SEGURIDAD MAY ROGA LLC ---
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "sk_test_tu_llave")
-stripe.api_key = STRIPE_SECRET_KEY
-DB_PATH = "data.db"
-
-def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""CREATE TABLE IF NOT EXISTS licencias 
-            (link_id TEXT PRIMARY KEY, device_id TEXT, expira TEXT, activo INTEGER)""")
+app = Flask(__name__, static_url_path='/static', static_folder='static')
 init_db()
 
-# --- INTERFAZ DE NAVEGACIÓN "AL CIELO" ---
+# CONFIGURACIÓN DE SEGURIDAD - MAY ROGA LLC
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+BASE_URL = "https://al-cielo-by-may-roga-llc.onrender.com"
+stripe.api_key = STRIPE_SECRET_KEY
+
+PLANES = {
+    "price_1Sv5uXBOA5mT4t0PtV7RaYCa": [15.00, 10, "Transportación 10 Días"],
+    "price_1Sv69jBOA5mT4t0PUA7yiisS": [25.00, 28, "Transportación 28 Días"],
+    "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Acceso Admin (Bypass)"]
+}
+
 VIEWER_HTML = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>AL CIELO - Navegación Total Cuba</title>
-    <meta charset="utf-8" />
+    <title>AL CIELO - Sistema de Navegación Cuba</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
     <style>
-        body { margin:0; background:#000; font-family: sans-serif; color:white; overflow:hidden; }
-        #map { height: 65vh; width: 100%; border-bottom: 2px solid #0059b3; }
-        .ui { height: 35vh; background:#111; padding:15px; display:flex; flex-direction:column; gap:10px; }
-        input { width: 92%; padding:12px; border-radius:8px; border:1px solid #333; background:#222; color:white; font-size:16px; }
-        .btn-main { width: 100%; padding:15px; background:#0059b3; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; }
-        .row { display:flex; gap:10px; }
-        .btn-sec { flex:1; padding:10px; background:#333; color:white; border:none; border-radius:5px; font-size:12px; }
-        @media print { .ui { display:none; } #map { height: 100vh; } }
+        body { margin:0; background:#000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color:white; overflow:hidden; }
+        #map { height: 75vh; width: 100%; border-bottom: 3px solid #0059b3; }
+        .nav-panel { height: 25vh; background:#111; padding:15px; display:flex; flex-direction:column; gap:10px; }
+        .search-group { display:flex; gap:8px; }
+        input { flex:1; padding:15px; border-radius:8px; border:1px solid #333; background:#222; color:white; font-size:16px; }
+        .btn-nav { background:#0059b3; color:white; border:none; padding:15px; border-radius:8px; font-weight:bold; width:100%; font-size:16px; cursor:pointer; }
+        .info-bar { display:flex; justify-content:space-between; font-size:10px; color:#555; margin-top:5px; }
+        /* Bloqueo de impresión y copia */
+        @media print { body { display:none; } }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <div class="ui">
-        <input id="start" placeholder="Inicio: Ej. Lawton, Habana">
-        <input id="end" placeholder="Fin: Ej. Varadero o Maisí">
-        <button class="btn-main" onclick="trazarRuta()">CALCULAR RUTA ASESORÍA</button>
-        <div class="row">
-            <button class="btn-sec" onclick="window.print()">REPORTE PDF</button>
-            <button class="btn-sec" style="background:#b30000;" onclick="eliminarRastro()">BORRAR DATOS</button>
+    <div class="nav-panel">
+        <div class="search-group">
+            <input id="destino" placeholder="¿A dónde vamos en Cuba? (Ej: Varadero)">
         </div>
-        <div style="text-align:center; font-size:10px; color:#555;">
-            AL CIELO by May Roga LLC | Jurisdicción USA | Expira: {{expira}}
+        <button class="btn-nav" onclick="iniciarNavegacion()">INICIAR RUTA TRASLADO</button>
+        <div class="info-bar">
+            <span>MAY ROGA LLC - JURISDICCIÓN USA</span>
+            <span>EXPIRA: {{expira}}</span>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
     <script>
-        // SEGURIDAD: Auto-destrucción si expira
-        const fechaExp = new Date("{{expira}}");
-        if (new Date() > fechaExp) {
-            alert("Licencia Expirada. Contacte a May Roga LLC.");
+        // BOMBA DE TIEMPO: Auto-destrucción si expira
+        const expiraStr = "{{expira}}";
+        if (new Date() > new Date(expiraStr)) {
+            alert("LICENCIA VENCIDA. Borrando datos de seguridad...");
             localStorage.clear();
+            caches.keys().then(n => n.forEach(c => caches.delete(c)));
             window.location.href = "/";
         }
 
-        // Mapa centrado en Cuba (Toda la isla)
-        var map = L.map('map').setView([21.5218, -77.7812], 6);
+        // MAPA CONFIGURADO PARA TODA CUBA
+        var map = L.map('map', { zoomControl: false }).setView([21.5, -79.5], 6);
         
-        // Capas Híbridas (Protección Offline)
-        L.tileLayer('/static/maps/cuba_tiles/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+        // Capas inteligentes (Caché Invisible)
+        const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
 
         var control = L.Routing.control({
             waypoints: [],
             router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
-            lineOptions: { styles: [{color: '#00ff00', weight: 6}] },
-            language: 'es'
+            lineOptions: { styles: [{color: '#00ff00', opacity: 0.9, weight: 8}] },
+            language: 'es',
+            createMarker: function(i, wp) {
+                return L.marker(wp.latLng, { draggable: true });
+            }
         }).addTo(map);
 
-        async function trazarRuta() {
-            const s = document.getElementById('start').value;
-            const e = document.getElementById('end').value;
-            if(!s || !e) return;
+        // GEOLOCALIZACIÓN EN TIEMPO REAL (MOVIMIENTO)
+        map.locate({setView: true, maxZoom: 16, watch: true});
 
-            const res1 = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${s},Cuba`).then(r=>r.json());
-            const res2 = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${e},Cuba`).then(r=>r.json());
+        async function iniciarNavegacion() {
+            const dest = document.getElementById('destino').value;
+            if(!dest) return;
 
-            if(res1[0] && res2[0]) {
-                const p1 = L.latLng(res1[0].lat, res1[0].lon);
-                const p2 = L.latLng(res2[0].lat, res2[0].lon);
-                control.setWaypoints([p1, p2]);
-                map.fitBounds([p1, p2]);
-                hablar("Ruta de asesoría calculada correctamente.");
-            } else { alert("Ubicación no encontrada."); }
-        }
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${dest},Cuba`);
+            const data = await res.json();
 
-        function hablar(t) {
-            var m = new SpeechSynthesisUtterance(t);
-            m.lang = 'es-US'; window.speechSynthesis.speak(m);
-        }
-
-        function eliminarRastro() {
-            if(confirm("¿Borrar historial de May Roga LLC?")) {
-                caches.delete('al-cielo-map-v1');
-                localStorage.clear();
-                window.location.href = "/";
+            if(data[0]) {
+                const start = map.getCenter();
+                const end = L.latLng(data[0].lat, data[0].lon);
+                control.setWaypoints([start, end]);
+                
+                // VOZ DE MANDO
+                var msg = new SpeechSynthesisUtterance("Calculando traslado hacia " + dest + ". Siga la ruta verde.");
+                msg.lang = 'es-US';
+                window.speechSynthesis.speak(msg);
+            } else {
+                alert("Destino no localizado en la isla.");
             }
         }
 
-        // Anticopia
+        // PROTECCIÓN ANTI-COPIA
         document.addEventListener('contextmenu', e => e.preventDefault());
+        document.onkeydown = function(e) {
+            if(e.ctrlKey && (e.keyCode === 85 || e.keyCode === 83 || e.keyCode === 123)) return false;
+        };
     </script>
 </body>
 </html>
 """
 
-# --- RUTAS DE LA APP ---
-
 @app.route("/")
-def index():
-    return """
-    <body style="text-align:center; font-family:sans-serif; padding-top:100px; background:#f4f4f4;">
-        <h1 style="color:#0059b3;">AL CIELO</h1>
-        <p>Asesoría Profesional de Navegación - May Roga LLC</p>
-        <div style="margin:20px;"><a href="/pay/15" style="padding:15px 30px; background:blue; color:white; text-decoration:none; border-radius:5px;">10 DÍAS - $15.00</a></div>
-        <div style="margin:20px;"><a href="/pay/25" style="padding:15px 30px; background:green; color:white; text-decoration:none; border-radius:5px;">28 DÍAS - $25.00</a></div>
-    </body>
-    """
+def home():
+    html = """<body style="background:#111; color:white; text-align:center; padding-top:50px; font-family:sans-serif;">
+              <h2>AL CIELO by May Roga LLC</h2><p>Seleccione su Plan de Movimiento en Cuba</p>"""
+    for pid, (precio, dias, desc) in PLANES.items():
+        html += f'<div style="margin:20px;"><a href="/checkout/{pid}" style="display:inline-block; width:80%; padding:20px; background:#0059b3; color:white; text-decoration:none; border-radius:10px; font-weight:bold;">{desc} – ${precio}</a></div>'
+    html += "</body>"
+    return html
 
-@app.route("/pay/<int:price>")
-def pay(price):
-    link_id = str(uuid.uuid4())[:8]
-    dias = 10 if price == 15 else 28
-    expira = (datetime.now() + timedelta(days=dias)).strftime("%Y-%m-%d")
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("INSERT INTO licencias VALUES (?, ?, ?, ?)", (link_id, None, expira, 1))
-    return redirect(f"/activar/{link_id}")
+@app.route("/checkout/<price_id>")
+def checkout(price_id):
+    if price_id not in PLANES: return "Error", 404
+    if price_id == "price_1Sv6H2BOA5mT4t0PppizlRAK":
+        link_id = str(uuid.uuid4())[:8]
+        expira = (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S")
+        create_license(link_id, f"ADMIN_{link_id}", expira)
+        return redirect(f"/activar/{link_id}")
 
-@app.route("/activar/<link_id>")
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        mode="payment",
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=f"{BASE_URL}/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=BASE_URL
+    )
+    return redirect(session.url)
+
+@app.route("/success")
+def success():
+    time.sleep(12) # Tiempo para Webhook
+    return redirect(f"/link/{request.args.get('session_id')}")
+
+@app.route("/link/<session_id>")
+def link_redirect(session_id):
+    link_id = get_license_by_session(session_id)
+    return redirect(f"/activar/{link_id}") if link_id else "Procesando pago..."
+
+@app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
+    lic = get_license_by_link(link_id)
+    if not lic: return "Licencia Inválida", 403
+    if request.method == "POST":
+        device_id = request.json.get("device_id")
+        set_active_device(link_id, device_id)
+        return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
     return render_template_string("""
-        <body style="text-align:center; padding:50px;">
-            <h2>Activar Asesoría AL CIELO</h2>
-            <p>Al presionar activar, este dispositivo quedará registrado.</p>
-            <button onclick="act()" style="padding:20px; background:blue; color:white;">ACTIVAR AHORA</button>
+        <body style="background:#000; color:white; text-align:center; padding:50px;">
+            <h2>AL CIELO - ACTIVACIÓN</h2>
+            <p>Al activar, este servicio quedará vinculado a este teléfono.</p>
+            <button onclick="act()" style="padding:20px; background:green; color:white; border:none; border-radius:10px; cursor:pointer;">VINCULAR DISPOSITIVO Y ENTRAR</button>
             <script>
-                function act(){
-                    fetch('/registro/{{id}}', {method:'POST'})
-                    .then(() => window.location.href='/viewer/{{id}}');
-                }
+            async function act(){
+                const d_id = localStorage.getItem("d_id") || crypto.randomUUID();
+                localStorage.setItem("d_id", d_id);
+                const r = await fetch("", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({device_id:d_id})});
+                const res = await r.json();
+                if(r.ok) window.location.href = res.map_url;
+            }
             </script>
         </body>
-    """, id=link_id)
-
-@app.route("/registro/<link_id>", methods=["POST"])
-def registro(link_id):
-    # En producción usaríamos un ID real del dispositivo
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("UPDATE licencias SET device_id='ACTIVO' WHERE link_id=?", (link_id,))
-    return jsonify({"status": "ok"})
+    """)
 
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
-    with sqlite3.connect(DB_PATH) as conn:
-        lic = conn.execute("SELECT expira FROM licencias WHERE link_id=?", (link_id,)).fetchone()
-    if lic:
-        return render_template_string(VIEWER_HTML, expira=lic[0])
-    return "Enlace Inválido", 404
+    lic = get_license_by_link(link_id)
+    if not lic: return "Acceso Denegado", 403
+    return render_template_string(VIEWER_HTML, expira=lic[1])
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
