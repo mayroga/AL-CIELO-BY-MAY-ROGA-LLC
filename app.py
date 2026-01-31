@@ -24,63 +24,65 @@ VIEWER_HTML = """
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
     <style>
         body { margin:0; background:#000; font-family: 'Segoe UI', sans-serif; color:white; overflow:hidden; }
-        #map { height: 55vh; width: 100%; border-bottom: 3px solid #0056b3; }
-        .panel { height: 45vh; background:#111; padding:8px; display:flex; flex-direction:column; gap:4px; overflow-y: auto; }
-        .telemetria { display: flex; justify-content: space-around; background: #222; padding: 6px; border-radius: 8px; border: 1px solid #0af; color: #0af; font-family: monospace; font-size: 14px; }
+        #map { height: 60vh; width: 100%; border-bottom: 3px solid #0056b3; }
+        .panel { height: 40vh; background:#111; padding:10px; display:flex; flex-direction:column; gap:4px; }
+        .telemetria { display: flex; justify-content: space-around; background: #222; padding: 6px; border-radius: 8px; border: 1px solid #0af; color: #0af; font-family: monospace; font-size:12px; }
         .search-box { display:flex; flex-direction:column; gap:4px; }
-        input { padding:12px; border-radius:6px; border:1px solid #333; background:#222; color:white; font-size:16px; width: 93%; }
+        input { padding:12px; border-radius:6px; border:1px solid #333; background:#222; color:white; font-size:14px; }
         .btn-group { display: flex; gap: 4px; }
-        .btn-nav { flex: 2; background:#0056b3; color:white; border:none; padding:15px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:16px; }
-        .btn-reset { flex: 1; background:#cc0000; color:white; border:none; padding:15px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:14px; }
-        .btn-extra { background:#333; color:#fff; border:1px solid #555; padding:10px; border-radius:6px; font-size:12px; flex:1; font-weight: bold; }
-        #instrucciones { font-size:18px; color:#00ff00; font-weight:bold; text-align:center; min-height:1.5em; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 5px; }
-        .car-icon { filter: drop-shadow(0 0 10px #fff); z-index: 1000 !important; font-size: 50px; text-align: center; }
+        .btn-nav { flex: 2; background:#0056b3; color:white; border:none; padding:14px; border-radius:6px; font-weight:bold; cursor:pointer; }
+        .btn-reset { flex: 1; background:#b30000; color:white; border:none; padding:14px; border-radius:6px; font-weight:bold; cursor:pointer; }
+        .btn-serv { background:#444; color:white; border:none; padding:8px; border-radius:6px; font-size:10px; flex:1; }
+        #instrucciones { font-size:16px; color:#00ff00; font-weight:bold; text-align:center; min-height:1.2em; text-transform: uppercase; padding:2px; }
+        .car-icon { filter: drop-shadow(0 0 10px #fff); z-index: 1000 !important; font-size: 45px; text-align:center; }
+        .leaflet-routing-container { display: none; }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div class="panel">
-        <div id="instrucciones">ESPERANDO DESTINO EN CUBA...</div>
+        <div id="instrucciones">LISTO PARA SU TRASLADO</div>
         <div class="telemetria">
-            <div>VEL: <b id="vel" style="font-size:20px;">0</b> km/h</div>
-            <div>DIST: <b id="dist" style="font-size:20px;">0.0</b> km</div>
-            <div id="status">GPS: LISTO</div>
+            <div>VEL: <b id="vel">0</b> km/h</div>
+            <div>DIST: <b id="dist">0.0</b> km</div>
+            <div>MODO: <b id="modo">ESPERA</b></div>
         </div>
         <div class="search-box">
-            <input id="origen" placeholder="Origen (Ej: Aeropuerto Habana)">
-            <input id="destino" placeholder="Destino (Ej: Hotel Varadero)">
+            <input id="origen" placeholder="Origen (Ej: Lawton)">
+            <input id="destino" placeholder="Destino (Ej: Hotel Melia)">
         </div>
         <div class="btn-group">
-            <button class="btn-nav" onclick="iniciarNavegacion()">INICIAR RUTA SEGURA</button>
-            <button class="btn-reset" onclick="reiniciar()">REINICIAR</button>
+            <button class="btn-nav" onclick="iniciarNavegacion()">INICIAR RUTA</button>
+            <button class="btn-reset" onclick="reiniciarRuta()">NUEVA RUTA</button>
         </div>
         <div class="btn-group">
-            <button class="btn-extra" onclick="buscarCercano('restaurant')">🍴 COMIDA</button>
-            <button class="btn-extra" onclick="buscarCercano('hotel')">🛌 DESCANSO</button>
-            <button class="btn-extra" onclick="buscarCercano('fuel')">⛽ GASOLINA</button>
-            <button class="btn-extra" onclick="buscarCercano('shop')">📦 MYPIME</button>
+            <button class="btn-serv" onclick="buscarCerca('restaurant')">🍴 COMIDA</button>
+            <button class="btn-serv" onclick="buscarCerca('hotel')">🛌 DESCANSO</button>
+            <button class="btn-serv" onclick="buscarCerca('fuel')">⛽ GASOLINERA</button>
+            <button class="btn-serv" onclick="buscarCerca('shop')">📦 MYPIMES</button>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
     <script>
-        var map = L.map('map', { zoomControl: false }).setView([23.1136, -82.3666], 13);
+        var map = L.map('map', { zoomControl: false }).setView([23.1136, -82.3666], 12);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        var carMarker = L.marker([23.1136, -82.3666], {
-            icon: L.divIcon({html: '🚗', className: 'car-icon', iconSize: [60, 60]})
+        var carMarker = L.marker([0,0], {
+            icon: L.divIcon({html: '🚗', className: 'car-icon', iconSize: [50, 50]})
         }).addTo(map);
 
         var control = L.Routing.control({
             waypoints: [],
             router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1', profile: 'car' }),
-            lineOptions: { styles: [{color: '#00ff00', opacity: 1, weight: 12}] },
-            showAlternatives: true,
+            lineOptions: { styles: [{color: '#00ff00', opacity: 1, weight: 10}] },
             language: 'es',
-            createMarker: function() { return null; }
+            autoRoute: true,
+            routeWhileDragging: false
         }).addTo(map);
 
         async function buscarLugar(q) {
@@ -94,31 +96,31 @@ VIEWER_HTML = """
             const p2 = await buscarLugar(document.getElementById('destino').value);
             if(p1 && p2) {
                 control.setWaypoints([p1, p2]);
-                hablar("Ruta configurada. Iniciando monitoreo de seguridad.");
-                activarSeguimientoReal();
+                hablar("Ruta calculada. El sistema recalculará si se desvía.");
+                conectarGPS();
             }
         }
 
-        function activarSeguimientoReal() {
+        function conectarGPS() {
             navigator.geolocation.watchPosition(pos => {
-                const latlng = [pos.coords.latitude, pos.coords.longitude];
+                const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
                 const vel = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
                 document.getElementById('vel').innerText = vel;
+                document.getElementById('modo').innerText = "VIVO";
+                
                 carMarker.setLatLng(latlng);
                 map.setView(latlng, 18);
-                
-                // Bloquear calles laterales con parches pequeños para no estorbar el carro
-                obstruirLaterales(latlng);
+                dibujarMuros(latlng);
             }, null, { enableHighAccuracy: true });
         }
 
-        function obstruirLaterales(pos) {
-            // Genera parches rojos en las intersecciones para indicar "No Salir de la Ruta"
-            const dist = 0.0008; 
-            const puntos = [[pos[0]+dist, pos[1]], [pos[0]-dist, pos[1]], [pos[0], pos[1]+dist], [pos[0], pos[1]-dist]];
-            puntos.forEach(p => {
-                let r = L.circle(p, {color: 'red', fillColor: '#f03', fillOpacity: 0.6, radius: 15}).addTo(map);
-                setTimeout(() => map.removeLayer(r), 2500);
+        function dibujarMuros(pos) {
+            // Dibuja líneas rojas en calles laterales para evitar desvíos
+            const offsets = [[0.0005, 0.0005], [-0.0005, -0.0005]];
+            offsets.forEach(off => {
+                let mPos = [pos.lat + off[0], pos.lng + off[1]];
+                let rect = L.rectangle(L.latLng(mPos).toBounds(20), {color: 'red', fillOpacity: 0.6, weight: 0}).addTo(map);
+                setTimeout(() => map.removeLayer(rect), 2500);
             });
         }
 
@@ -126,36 +128,34 @@ VIEWER_HTML = """
             const route = e.routes[0];
             document.getElementById('dist').innerText = (route.summary.totalDistance / 1000).toFixed(1);
             
-            // Sistema de Voz Anticipada para Seguridad del Chofer
+            // Lógica de Voz Anticipada
             route.instructions.forEach((inst, i) => {
                 setTimeout(() => {
                     document.getElementById('instrucciones').innerText = inst.text;
                     hablar("Atención chofer: " + inst.text);
-                }, i * 10000); // Intervalo simulado de avance
+                }, i * 7000); 
             });
         });
 
-        async function buscarCercano(tipo) {
-            const p = carMarker.getLatLng();
-            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${tipo}&lat=${p.lat}&lon=${p.lng}&zoom=15`);
+        async function buscarCerca(tipo) {
+            const pos = carMarker.getLatLng();
+            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${tipo}&lat=${pos.lat}&lon=${pos.lng}&zoom=15`);
             const d = await r.json();
-            d.forEach(l => {
-                L.marker([l.lat, l.lon], {icon: L.divIcon({html:'📍', className:'loc'})}).addTo(map).bindPopup(l.display_name).openPopup();
-            });
-            hablar("Buscando " + tipo + " en los alrededores.");
+            d.forEach(l => L.marker([l.lat, l.lon]).addTo(map).bindPopup(l.display_name).openPopup());
+            hablar("Mostrando " + tipo + " cercanos.");
         }
 
-        function reiniciar() {
+        function reiniciarRuta() {
             control.setWaypoints([]);
             document.getElementById('origen').value = "";
             document.getElementById('destino').value = "";
-            document.getElementById('instrucciones').innerText = "ESPERANDO NUEVA RUTA...";
-            hablar("Sistema reiniciado. Puede ingresar un nuevo destino.");
+            document.getElementById('instrucciones').innerText = "LISTO PARA NUEVA RUTA";
+            hablar("Sistema reiniciado. Ingrese nuevo destino.");
         }
 
         function hablar(t) {
             const u = new SpeechSynthesisUtterance(t);
-            u.lang = 'es-ES'; u.rate = 0.85;
+            u.lang = 'es-ES'; u.rate = 0.9;
             window.speechSynthesis.speak(u);
         }
     </script>
@@ -166,10 +166,9 @@ VIEWER_HTML = """
 @app.route("/")
 def home():
     html = '<div style="max-width:400px; margin:auto; text-align:center; font-family:sans-serif; background:#000; color:white; padding:40px; border-radius:20px; border: 2px solid #0056b3;">'
-    html += '<h1 style="color:#0af;">AL CIELO</h1><p>MAY ROGA LLC</p><hr>'
+    html += '<h1>AL CIELO</h1><p>MAY ROGA LLC</p><hr>'
     for pid, (p, d, n) in PLANES.items():
-        html += f'<a href="/checkout/{pid}" style="display:block; background:#0056b3; color:white; padding:18px; margin:15px 0; text-decoration:none; border-radius:12px; font-weight:bold; font-size:18px;">{n} - ${p}</a>'
-    html += '</div>'
+        html += f'<a href="/checkout/{pid}" style="display:block; background:#0056b3; color:white; padding:18px; margin:15px 0; text-decoration:none; border-radius:12px; font-weight:bold;">{n} - ${p}</a>'
     return html
 
 @app.route("/checkout/<pid>")
@@ -194,14 +193,14 @@ def success():
 @app.route("/link/<session_id>")
 def link_redirect(session_id):
     lid = get_license_by_session(session_id)
-    return redirect(f"/activar/{lid}") if lid else ("Error de enlace", 404)
+    return redirect(f"/activar/{lid}") if lid else ("Confirmando...", 404)
 
 @app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
     if request.method == "POST":
         set_active_device(link_id, request.json.get("device_id"))
         return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
-    return render_template_string("<body style='background:#000; color:white; text-align:center; padding-top:100px;'><h2>MAY ROGA LLC - CONTRATO</h2><button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR AL SISTEMA</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script></body>")
+    return render_template_string("<body style='background:#000; color:white; text-align:center; padding-top:100px;'><h2>MAY ROGA LLC</h2><button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR AL SISTEMA</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script></body>")
 
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
