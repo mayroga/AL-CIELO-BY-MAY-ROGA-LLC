@@ -109,6 +109,7 @@ VIEWER_HTML = """
                 map.setView(latlng, 18);
 
                 if (vel > 5) {
+                    procesarInstrucciones(latlng);
                     dibujarMurosRojos(latlng);
                 }
             }, null, { enableHighAccuracy: true });
@@ -125,6 +126,8 @@ VIEWER_HTML = """
                 setTimeout(() => map.removeLayer(pLine), 3000);
             });
         }
+
+        function procesarInstrucciones(pos) {}
 
         control.on('routesfound', function(e) {
             const instruccion = e.routes[0].instructions[0];
@@ -156,7 +159,7 @@ VIEWER_HTML = """
             const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${tipo}&lat=${pos.lat}&lon=${pos.lng}&zoom=15`);
             const d = await r.json();
             d.forEach(l => L.marker([l.lat, l.lon]).addTo(map).bindPopup(l.display_name).openPopup());
-            hablar("Buscando " + tipo + " cerca.");
+            hablar("Buscando " + tipo + " cerca de su posición.");
         }
     </script>
 </body>
@@ -201,7 +204,7 @@ def activar(link_id):
     if request.method == "POST":
         set_active_device(link_id, request.json.get("device_id"))
         return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
-    return render_template_string("<body style='background:#000; color:white; text-align:center; padding-top:100px;'><h2>MAY ROGA LLC</h2><button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script></body>")
+    return render_template_string("<body style='background:#000; color:white; text-align:center; padding-top:100px;'><h2>AL CIELO BY MAY ROGA LLC</h2><button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR AL SISTEMA</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script></body>")
 
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
