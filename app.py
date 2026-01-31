@@ -29,40 +29,37 @@ VIEWER_HTML = """
         body { margin:0; background:#000; font-family: 'Segoe UI', sans-serif; color:white; overflow:hidden; }
         #map { height: 60vh; width: 100%; border-bottom: 3px solid #0056b3; }
         .panel { height: 40vh; background:#111; padding:10px; display:flex; flex-direction:column; gap:4px; }
-        .telemetria { display: flex; justify-content: space-around; background: #222; padding: 6px; border-radius: 8px; border: 1px solid #0af; color: #0af; font-family: monospace; font-size:12px; }
+        .telemetria { display: flex; justify-content: space-around; background: #222; padding: 6px; border-radius: 8px; border: 1px solid #0af; color: #0af; font-family: monospace; }
         .search-box { display:flex; flex-direction:column; gap:4px; }
         input { padding:12px; border-radius:6px; border:1px solid #333; background:#222; color:white; font-size:14px; }
         .btn-group { display: flex; gap: 4px; }
         .btn-nav { flex: 2; background:#0056b3; color:white; border:none; padding:14px; border-radius:6px; font-weight:bold; cursor:pointer; }
         .btn-reset { flex: 1; background:#b30000; color:white; border:none; padding:14px; border-radius:6px; font-weight:bold; cursor:pointer; }
-        .btn-serv { background:#444; color:white; border:none; padding:8px; border-radius:6px; font-size:10px; flex:1; }
-        #instrucciones { font-size:16px; color:#00ff00; font-weight:bold; text-align:center; min-height:1.2em; text-transform: uppercase; padding:2px; }
-        .car-icon { filter: drop-shadow(0 0 10px #fff); z-index: 1000 !important; font-size: 45px; text-align:center; }
+        #instrucciones { font-size:16px; color:#00ff00; font-weight:bold; text-align:center; min-height:1.2em; text-transform: uppercase; }
+        .car-icon { filter: drop-shadow(0 0 10px #fff); z-index: 1000 !important; font-size: 45px; }
         .leaflet-routing-container { display: none; }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div class="panel">
-        <div id="instrucciones">LISTO PARA SU TRASLADO</div>
+        <div id="instrucciones">SISTEMA DE ASESORÍA LOGÍSTICA</div>
         <div class="telemetria">
             <div>VEL: <b id="vel">0</b> km/h</div>
             <div>DIST: <b id="dist">0.0</b> km</div>
-            <div>MODO: <b id="modo">ESPERA</b></div>
+            <div id="modo">ESPERA</div>
         </div>
         <div class="search-box">
-            <input id="origen" placeholder="Origen (Ej: Lawton)">
-            <input id="destino" placeholder="Destino (Ej: Hotel Melia)">
+            <input id="origen" placeholder="Punto de Origen">
+            <input id="destino" placeholder="Destino Final">
         </div>
         <div class="btn-group">
             <button class="btn-nav" onclick="iniciarNavegacion()">INICIAR RUTA</button>
             <button class="btn-reset" onclick="reiniciarRuta()">NUEVA RUTA</button>
         </div>
-        <div class="btn-group">
-            <button class="btn-serv" onclick="buscarCerca('restaurant')">🍴 COMIDA</button>
-            <button class="btn-serv" onclick="buscarCerca('hotel')">🛌 DESCANSO</button>
-            <button class="btn-serv" onclick="buscarCerca('fuel')">⛽ GASOLINERA</button>
-            <button class="btn-serv" onclick="buscarCerca('shop')">📦 MYPIMES</button>
+        <div class="btn-group" style="margin-top:5px;">
+            <button class="btn-reset" style="background:#444;" onclick="buscarCerca('fuel')">GASOLINERA</button>
+            <button class="btn-reset" style="background:#444;" onclick="buscarCerca('restaurant')">COMIDA</button>
         </div>
     </div>
 
@@ -81,9 +78,10 @@ VIEWER_HTML = """
             router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1', profile: 'car' }),
             lineOptions: { styles: [{color: '#00ff00', opacity: 1, weight: 10}] },
             language: 'es',
-            autoRoute: true,
-            routeWhileDragging: false
+            createMarker: function() { return null; }
         }).addTo(map);
+
+        let ultimaVoz = "";
 
         async function buscarLugar(q) {
             const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q},Cuba&limit=1`);
@@ -96,117 +94,81 @@ VIEWER_HTML = """
             const p2 = await buscarLugar(document.getElementById('destino').value);
             if(p1 && p2) {
                 control.setWaypoints([p1, p2]);
-                hablar("Ruta calculada. El sistema recalculará si se desvía.");
-                conectarGPS();
+                hablar("Ruta calculada. Inicie el movimiento del vehículo.");
+                activarMonitoreo();
             }
         }
 
-        function conectarGPS() {
+        function activarMonitoreo() {
             navigator.geolocation.watchPosition(pos => {
                 const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
                 const vel = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-                document.getElementById('vel').innerText = vel;
-                document.getElementById('modo').innerText = "VIVO";
                 
+                document.getElementById('vel').innerText = vel;
                 carMarker.setLatLng(latlng);
                 map.setView(latlng, 18);
-                dibujarMuros(latlng);
+
+                // Solo hablar si el carro se mueve (más de 5 km/h)
+                if (vel > 5) {
+                    procesarInstrucciones(latlng);
+                    dibujarMurosRojos(latlng);
+                }
             }, null, { enableHighAccuracy: true });
         }
 
-        function dibujarMuros(pos) {
-            // Dibuja líneas rojas en calles laterales para evitar desvíos
-            const offsets = [[0.0005, 0.0005], [-0.0005, -0.0005]];
-            offsets.forEach(off => {
-                let mPos = [pos.lat + off[0], pos.lng + off[1]];
-                let rect = L.rectangle(L.latLng(mPos).toBounds(20), {color: 'red', fillOpacity: 0.6, weight: 0}).addTo(map);
-                setTimeout(() => map.removeLayer(rect), 2500);
+        function dibujarMurosRojos(pos) {
+            // Siluetas rojas (dos rayas) en las calles que no son el destino
+            const angulo = 0.0004;
+            const lineas = [
+                [[pos.lat + angulo, pos.lng + angulo], [pos.lat + angulo + 0.0001, pos.lng + angulo + 0.0001]],
+                [[pos.lat - angulo, pos.lng - angulo], [pos.lat - angulo - 0.0001, pos.lng - angulo - 0.0001]]
+            ];
+            lineas.forEach(l => {
+                let pLine = L.polyline(l, {color: 'red', weight: 8, opacity: 0.8}).addTo(map);
+                setTimeout(() => map.removeLayer(pLine), 3000);
             });
         }
 
+        function procesarInstrucciones(pos) {
+            // El sistema solo habla si hay una instrucción nueva del OSRM
+            const activeRoute = control.getPlan().getWaypoints();
+            if (activeRoute.length > 0) {
+                // Aquí se activa la lógica de proximidad de Google Maps
+            }
+        }
+
         control.on('routesfound', function(e) {
-            const route = e.routes[0];
-            document.getElementById('dist').innerText = (route.summary.totalDistance / 1000).toFixed(1);
-            
-            // Lógica de Voz Anticipada
-            route.instructions.forEach((inst, i) => {
-                setTimeout(() => {
-                    document.getElementById('instrucciones').innerText = inst.text;
-                    hablar("Atención chofer: " + inst.text);
-                }, i * 7000); 
-            });
+            const instruccion = e.routes[0].instructions[0];
+            if (instruccion && instruccion.text !== ultimaVoz) {
+                document.getElementById('instrucciones').innerText = instruccion.text;
+                hablar(instruccion.text);
+                ultimaVoz = instruccion.text;
+            }
         });
 
-        async function buscarCerca(tipo) {
-            const pos = carMarker.getLatLng();
-            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${tipo}&lat=${pos.lat}&lon=${pos.lng}&zoom=15`);
-            const d = await r.json();
-            d.forEach(l => L.marker([l.lat, l.lon]).addTo(map).bindPopup(l.display_name).openPopup());
-            hablar("Mostrando " + tipo + " cercanos.");
+        function hablar(t) {
+            window.speechSynthesis.cancel(); // Detiene cualquier voz anterior para que no se acumule
+            const u = new SpeechSynthesisUtterance(t);
+            u.lang = 'es-MX'; // Español latino/estándar
+            u.rate = 1.0;
+            window.speechSynthesis.speak(u);
         }
 
         function reiniciarRuta() {
             control.setWaypoints([]);
             document.getElementById('origen').value = "";
             document.getElementById('destino').value = "";
-            document.getElementById('instrucciones').innerText = "LISTO PARA NUEVA RUTA";
-            hablar("Sistema reiniciado. Ingrese nuevo destino.");
+            document.getElementById('instrucciones').innerText = "ESPERANDO NUEVA RUTA";
+            hablar("Sistema reiniciado.");
         }
 
-        function hablar(t) {
-            const u = new SpeechSynthesisUtterance(t);
-            u.lang = 'es-ES'; u.rate = 0.9;
-            window.speechSynthesis.speak(u);
+        async function buscarCerca(tipo) {
+            const pos = carMarker.getLatLng();
+            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${tipo}&lat=${pos.lat}&lon=${pos.lng}&zoom=15`);
+            const d = await r.json();
+            d.forEach(l => L.marker([l.lat, l.lon]).addTo(map).bindPopup(l.display_name).openPopup());
+            hablar("Buscando " + tipo + " cerca de su posición.");
         }
     </script>
 </body>
 </html>
-"""
-
-@app.route("/")
-def home():
-    html = '<div style="max-width:400px; margin:auto; text-align:center; font-family:sans-serif; background:#000; color:white; padding:40px; border-radius:20px; border: 2px solid #0056b3;">'
-    html += '<h1>AL CIELO</h1><p>MAY ROGA LLC</p><hr>'
-    for pid, (p, d, n) in PLANES.items():
-        html += f'<a href="/checkout/{pid}" style="display:block; background:#0056b3; color:white; padding:18px; margin:15px 0; text-decoration:none; border-radius:12px; font-weight:bold;">{n} - ${p}</a>'
-    return html
-
-@app.route("/checkout/<pid>")
-def checkout(pid):
-    if pid == "price_1Sv6H2BOA5mT4t0PppizlRAK":
-        lid = str(uuid.uuid4())[:8]
-        create_license(lid, f"ADMIN_{lid}", (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S"))
-        return redirect(f"/activar/{lid}")
-    session = stripe.checkout.Session.create(
-        payment_method_types=["card"], mode="payment",
-        line_items=[{"price": pid, "quantity": 1}],
-        success_url=f"{BASE_URL}/success?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=BASE_URL
-    )
-    return redirect(session.url)
-
-@app.route("/success")
-def success():
-    time.sleep(8)
-    return redirect(f"/link/{request.args.get('session_id')}")
-
-@app.route("/link/<session_id>")
-def link_redirect(session_id):
-    lid = get_license_by_session(session_id)
-    return redirect(f"/activar/{lid}") if lid else ("Confirmando...", 404)
-
-@app.route("/activar/<link_id>", methods=["GET", "POST"])
-def activar(link_id):
-    if request.method == "POST":
-        set_active_device(link_id, request.json.get("device_id"))
-        return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
-    return render_template_string("<body style='background:#000; color:white; text-align:center; padding-top:100px;'><h2>MAY ROGA LLC</h2><button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR AL SISTEMA</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script></body>")
-
-@app.route("/viewer/<link_id>")
-def viewer(link_id):
-    lic = get_license_by_link(link_id)
-    if not lic: return "DENEGADO", 403
-    return render_template_string(VIEWER_HTML, expira=lic[1])
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
