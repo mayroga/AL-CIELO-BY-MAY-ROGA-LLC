@@ -108,16 +108,13 @@ VIEWER_HTML = """
                 carMarker.setLatLng(latlng);
                 map.setView(latlng, 18);
 
-                // Solo hablar si el carro se mueve (más de 5 km/h)
                 if (vel > 5) {
-                    procesarInstrucciones(latlng);
                     dibujarMurosRojos(latlng);
                 }
             }, null, { enableHighAccuracy: true });
         }
 
         function dibujarMurosRojos(pos) {
-            // Siluetas rojas (dos rayas) en las calles que no son el destino
             const angulo = 0.0004;
             const lineas = [
                 [[pos.lat + angulo, pos.lng + angulo], [pos.lat + angulo + 0.0001, pos.lng + angulo + 0.0001]],
@@ -127,14 +124,6 @@ VIEWER_HTML = """
                 let pLine = L.polyline(l, {color: 'red', weight: 8, opacity: 0.8}).addTo(map);
                 setTimeout(() => map.removeLayer(pLine), 3000);
             });
-        }
-
-        function procesarInstrucciones(pos) {
-            // El sistema solo habla si hay una instrucción nueva del OSRM
-            const activeRoute = control.getPlan().getWaypoints();
-            if (activeRoute.length > 0) {
-                // Aquí se activa la lógica de proximidad de Google Maps
-            }
         }
 
         control.on('routesfound', function(e) {
@@ -147,9 +136,9 @@ VIEWER_HTML = """
         });
 
         function hablar(t) {
-            window.speechSynthesis.cancel(); // Detiene cualquier voz anterior para que no se acumule
+            window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(t);
-            u.lang = 'es-MX'; // Español latino/estándar
+            u.lang = 'es-MX';
             u.rate = 1.0;
             window.speechSynthesis.speak(u);
         }
@@ -167,8 +156,58 @@ VIEWER_HTML = """
             const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${tipo}&lat=${pos.lat}&lon=${pos.lng}&zoom=15`);
             const d = await r.json();
             d.forEach(l => L.marker([l.lat, l.lon]).addTo(map).bindPopup(l.display_name).openPopup());
-            hablar("Buscando " + tipo + " cerca de su posición.");
+            hablar("Buscando " + tipo + " cerca.");
         }
     </script>
 </body>
 </html>
+"""
+
+@app.route("/")
+def home():
+    html = '<div style="max-width:400px; margin:auto; text-align:center; font-family:sans-serif; background:#000; color:white; padding:40px; border-radius:20px; border: 2px solid #0056b3;">'
+    html += '<h1>AL CIELO</h1><p>MAY ROGA LLC</p><hr>'
+    for pid, (p, d, n) in PLANES.items():
+        html += f'<a href="/checkout/{pid}" style="display:block; background:#0056b3; color:white; padding:18px; margin:15px 0; text-decoration:none; border-radius:12px; font-weight:bold;">{n} - ${p}</a>'
+    html += '</div>'
+    return html
+
+@app.route("/checkout/<pid>")
+def checkout(pid):
+    if pid == "price_1Sv6H2BOA5mT4t0PppizlRAK":
+        lid = str(uuid.uuid4())[:8]
+        create_license(lid, f"ADMIN_{lid}", (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S"))
+        return redirect(f"/activar/{lid}")
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"], mode="payment",
+        line_items=[{"price": pid, "quantity": 1}],
+        success_url=f"{BASE_URL}/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=BASE_URL
+    )
+    return redirect(session.url)
+
+@app.route("/success")
+def success():
+    time.sleep(8)
+    return redirect(f"/link/{request.args.get('session_id')}")
+
+@app.route("/link/<session_id>")
+def link_redirect(session_id):
+    lid = get_license_by_session(session_id)
+    return redirect(f"/activar/{lid}") if lid else ("Confirmando...", 404)
+
+@app.route("/activar/<link_id>", methods=["GET", "POST"])
+def activar(link_id):
+    if request.method == "POST":
+        set_active_device(link_id, request.json.get("device_id"))
+        return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
+    return render_template_string("<body style='background:#000; color:white; text-align:center; padding-top:100px;'><h2>MAY ROGA LLC</h2><button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script></body>")
+
+@app.route("/viewer/<link_id>")
+def viewer(link_id):
+    lic = get_license_by_link(link_id)
+    if not lic: return "DENEGADO", 403
+    return render_template_string(VIEWER_HTML, expira=lic[1])
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
