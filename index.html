@@ -1,63 +1,77 @@
-<div id="legal-container" style="max-width:900px;margin:auto;background:#000;color:#fff;padding:20px;font-family:Arial">
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AL CIELO – Consentimiento Informado</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:0; }
+  #legal-container { max-width:900px; margin:40px auto; background:#111; padding:20px; border-radius:12px; }
+  textarea { width:100%; height:320px; background:#111; color:#0f0; border:1px solid #333; padding:10px; resize:none; }
+  label { display:block; margin-top:15px; }
+  button { margin-top:20px; padding:15px; width:100%; background:#0056b3; color:white; border:none; font-size:18px; border-radius:8px; cursor:pointer; }
+</style>
+</head>
+<body>
 
-<h2>AL CIELO – CONSENTIMIENTO INFORMADO</h2>
+<div id="legal-container">
+  <h2>AL CIELO – CONSENTIMIENTO INFORMADO</h2>
 
-<textarea readonly style="width:100%;height:360px;background:#111;color:#0f0;border:1px solid #333;padding:10px;">
+  <textarea readonly>
 AL CIELO – BY MAY ROGA LLC
 Propiedad legal y exclusiva de MAY ROGA LLC (USA)
 
-CONSENTIMIENTO INFORMADO, TÉRMINOS DE USO Y DESCARGO TOTAL DE RESPONSABILIDAD
+Al continuar y acceder a esta aplicación, el usuario declara, acepta y reconoce EXPRESAMENTE, bajo juramento y plena responsabilidad legal, lo siguiente:
 
 1. DECLARACIÓN DE ESTATUS LEGAL
-Declaro que soy ciudadano o residente legal permanente en EE. UU., o de un país sin sanciones estadounidenses. No soy ciudadano ni representante de países sancionados.
+Declaro que soy ciudadano o residente legal en EE. UU. o de un país sin sanciones de EE. UU., y que no soy funcionario, agente ni representante de ningún país sancionado.
 
 2. ALCANCE Y LIMITACIÓN DE USO
-Software privado para navegación asistida, uso lícito personal/profesional/logístico. Prohibido uso militar, gubernamental, policial, de inteligencia o ilegal.
+Esta aplicación es privada, de uso exclusivo y limitado, destinado únicamente a navegación asistida y uso personal/profesional lícito. Queda estrictamente prohibido uso militar, gubernamental, policial, de inteligencia o que infrinja leyes.
 
-3. FUNCIONAMIENTO OFFLINE
-El sistema puede operar sin internet. Mapas y rutas son referenciales. Asumo responsabilidad total por decisiones, accidentes, multas o daños.
+3. FUNCIONAMIENTO OFFLINE Y RESPONSABILIDAD DEL USUARIO
+Reconozco que el sistema puede operar parcial o totalmente offline. Mapas, rutas y cálculos son referenciales. Asumo total responsabilidad por decisiones de conducción, accidentes, multas o daños a terceros.
 
-4. DATOS Y MAPAS DE TERCEROS
-Mapas y datos de OpenStreetMap y fuentes abiertas. Pueden contener errores. MAY ROGA LLC no se responsabiliza. 
-El usuario exime total y permanentemente a MAY ROGA LLC y sus socios.
+4. DATOS, MAPAS Y CONTENIDOS DE TERCEROS
+Se utilizan datos de OpenStreetMap y fuentes abiertas. Estos datos pueden contener errores. MAY ROGA LLC no es responsable por errores u omisiones. Exonero a MAY ROGA LLC y asociados de cualquier reclamación.
 
 5. LICENCIA, DISPOSITIVOS Y CONTROL
-Acceso limitado por licencia. Solo un dispositivo activo. Licencia revocable ante uso indebido.
+El acceso está limitado por licencia. Solo un dispositivo puede estar activo a la vez. La licencia puede ser revocada sin previo aviso ante uso indebido.
 
 6. EXONERACIÓN TOTAL DE RESPONSABILIDAD
-Renuncio a toda acción legal contra AL-CIELO-BY-MAY-ROGA-LLC, MAY ROGA LLC, empleados o afiliados.
+Renuncio expresa, irrevocable y permanentemente a demandas, reclamos o acciones legales contra AL-CIELO-BY-MAY-ROGA-LLC, MAY ROGA LLC y sus afiliados.
 
-7. JURISDICCIÓN
-Leyes de EE. UU., tribunales competentes en EE. UU.
+7. JURISDICCIÓN Y LEY APLICABLE
+Este acuerdo se rige por las leyes de EE. UU. y cualquier disputa se resolverá en tribunales de EE. UU.
 
-8. ATRIBUCIÓN OSM
-Mapas y datos proporcionados por OpenStreetMap contributors (https://www.openstreetmap.org/copyright)
-</textarea>
+8. ATRIBUCIÓN OSM (obligatoria)
+Los mapas y datos de OpenStreetMap se utilizan bajo licencia ODbL. Fuente: https://www.openstreetmap.org/copyright
+  </textarea>
 
-<label style="display:block;margin-top:15px;">
-  <input type="checkbox" id="check-legal">
-  Declaro que he leído, comprendido y acepto TODAS las condiciones legales
-</label>
+  <label>
+    <input type="checkbox" id="check-legal">
+    Declaro que he leído, comprendido y acepto TODAS las condiciones legales
+  </label>
 
-<button style="margin-top:20px;padding:15px;width:100%;background:#0056b3;color:white;border:none;font-size:18px"
-onclick="activarServicio()">
-ACEPTO Y ENTRAR AL SISTEMA
-</button>
-
+  <button onclick="activarServicio()">ACEPTO Y ENTRAR AL SISTEMA</button>
 </div>
 
 <script>
 async function activarServicio(){
+  if(!document.getElementById("check-legal").checked){
+    alert("Debe aceptar el consentimiento informado para continuar.");
+    return;
+  }
+
   const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
   localStorage.setItem("device_id", device_id);
 
   const link_id = location.pathname.split("/").pop();
-  const legal_ok = document.getElementById("check-legal")?.checked || false;
 
   const res = await fetch(`/activar/${link_id}`, {
     method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({device_id, legal_ok})
+    body:JSON.stringify({device_id, legal_ok:true})
   });
 
   const data = await res.json();
@@ -65,3 +79,5 @@ async function activarServicio(){
   else alert(data.error || "Acceso denegado.");
 }
 </script>
+</body>
+</html>
