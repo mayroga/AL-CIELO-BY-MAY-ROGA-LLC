@@ -6,36 +6,34 @@
 AL CIELO – BY MAY ROGA LLC
 Propiedad legal y exclusiva de MAY ROGA LLC (USA)
 
+CONSENTIMIENTO INFORMADO, TÉRMINOS DE USO Y DESCARGO TOTAL DE RESPONSABILIDAD
+
 Al continuar y acceder a esta aplicación, el usuario declara, acepta y reconoce EXPRESAMENTE, bajo juramento y plena responsabilidad legal, lo siguiente:
 
 1. DECLARACIÓN DE ESTATUS LEGAL
-Declaro que soy ciudadano de EE. UU., residente legal permanente, o ciudadano de país sin sanciones.
-Declaro que NO soy ciudadano, residente, agente ni representante de países sancionados.
+Declaro que soy ciudadano de EE.UU., residente legal permanente en EE.UU., o ciudadano de un país sin sanciones por EE.UU. Declaro que NO soy ciudadano, residente, funcionario, agente ni representante de ningún país sujeto a sanciones de EE.UU.
 
 2. ALCANCE Y LIMITACIÓN DE USO
-Uso exclusivo para navegación asistida, personal, profesional o logística lícita.
-Prohibido uso militar, gubernamental, policial, de inteligencia, vigilancia o ilegal.
+Uso exclusivo para navegación asistida personal, profesional o logística lícita. Prohibido uso militar, gubernamental, de inteligencia, vigilancia o que infrinja leyes de EE.UU.
 
-3. FUNCIONAMIENTO OFFLINE
-Sistema puede operar parcial o totalmente sin internet.
-Mapas, rutas e instrucciones son referenciales.
-Asumo responsabilidad total de decisiones, accidentes, multas y daños.
+3. FUNCIONAMIENTO OFFLINE Y RESPONSABILIDAD DEL USUARIO
+Sistema offline total/parcial, mapas referenciales. Asumo responsabilidad total por decisiones de conducción, rutas, accidentes, multas, daños materiales o personales.
 
-4. DATOS DE TERCEROS
-Se usan datos de OpenStreetMap y fuentes abiertas.
-Errores posibles; MAY ROGA LLC no se responsabiliza.
+4. DATOS, MAPAS Y CONTENIDOS DE TERCEROS
+Datos geográficos provienen de OpenStreetMap y fuentes abiertas. Los datos pueden contener errores. MAY ROGA LLC NO ES RESPONSABLE. El usuario exonera a MAY ROGA LLC y afiliados.
 
-5. LICENCIA Y DISPOSITIVOS
-Acceso limitado por licencia; un dispositivo activo a la vez.
-Licencia revocable sin previo aviso.
+5. LICENCIA, DISPOSITIVOS Y CONTROL
+Acceso limitado por licencia. Solo un dispositivo activo a la vez (excepto licencias de prueba autorizadas). Licencia puede ser revocada ante uso indebido.
 
-6. EXONERACIÓN TOTAL
-Renuncio a demandas o reclamos contra AL CIELO, MAY ROGA LLC y afiliados.
+6. EXONERACIÓN TOTAL DE RESPONSABILIDAD
+Renuncio a demandas, reclamos o acciones legales contra AL-CIELO-BY-MAY-ROGA-LLC, MAY ROGA LLC o sus representantes.
 
-7. JURISDICCIÓN
-Ley exclusiva de EE. UU. y tribunales competentes.
+7. JURISDICCIÓN Y LEY APLICABLE
+Rige exclusivamente la ley de EE.UU. y tribunales competentes de EE.UU.
 
-SIN ACEPTACIÓN EXPLÍCITA, NO EXISTE ACCESO AL SISTEMA.
+✅ SIN ACEPTACIÓN EXPLÍCITA, NO EXISTE ACCESO AL SISTEMA.
+
+Atribución de datos: Mapas y datos de OpenStreetMap © OpenStreetMap contributors
 </textarea>
 
 <label style="display:block;margin-top:15px;">
@@ -52,11 +50,6 @@ ACEPTO Y ENTRAR AL SISTEMA
 
 <script>
 async function activarServicio(){
-  if(!document.getElementById("check-legal").checked){
-    alert("Debe aceptar el consentimiento informado para continuar.");
-    return;
-  }
-
   const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
   localStorage.setItem("device_id", device_id);
 
@@ -69,9 +62,11 @@ async function activarServicio(){
   });
 
   const data = await res.json();
-  if(res.ok) {
-    alert("Licencia activada correctamente. Modo de operación automático activado.");
+  if(res.ok){
+    alert("Licencia activada! Descargando mapa...");
     location.href = data.map_url;
-  } else alert(data.error || "Acceso denegado.");
+  } else {
+    alert(data.error || "Acceso denegado.");
+  }
 }
 </script>
