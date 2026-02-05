@@ -7,7 +7,7 @@
 <style>
 body {background:#000;color:#fff;font-family:Arial;margin:0;padding:0;}
 #legal-container {max-width:900px;margin:auto;background:#000;color:#fff;padding:20px;}
-textarea {width:100%;height:420px;background:#111;color:#0f0;border:1px solid #333;padding:10px;resize:none;}
+textarea {width:100%;height:320px;background:#111;color:#0f0;border:1px solid #333;padding:10px;resize:none;}
 label {display:block;margin-top:15px;}
 button {margin-top:20px;padding:15px;width:100%;background:#0056b3;color:white;border:none;font-size:18px;cursor:pointer;}
 </style>
@@ -41,22 +41,19 @@ Policial,
 De inteligencia,
 De vigilancia,
 O que infrinja leyes estadounidenses o internacionales.
-El usuario acepta que cualquier incumplimiento de esta cláusula puede derivar en la **revocación inmediata de la licencia** y acciones legales.
 
 3. FUNCIONAMIENTO OFFLINE Y RESPONSABILIDAD DEL USUARIO
 Reconozco que:
 El sistema puede operar total o parcialmente sin conexión a internet.
-Los mapas, rutas, cálculos y sugerencias son **referenciales y de uso exclusivo como guía**.
+Los mapas, rutas, cálculos y sugerencias son referenciales.
 No sustituyen señalización vial, normativas locales ni criterio humano.
-El usuario **asume total responsabilidad** por:
+Asumo total responsabilidad por:
 Decisiones de conducción,
 Rutas elegidas,
 Accidentes,
 Multas,
 Daños materiales,
-Daños personales o a terceros,
-Incluso si los datos de GPS o mapas son incorrectos o incompletos.
-Se libera expresamente a MAY ROGA LLC de cualquier reclamación derivada de uso indebido o negligente.
+Daños personales o a terceros.
 
 4. DATOS, MAPAS Y CONTENIDOS DE TERCEROS
 Reconozco que esta aplicación utiliza datos geográficos provenientes de:
@@ -64,14 +61,14 @@ OpenStreetMap y fuentes abiertas similares.
 Declaro entender que:
 Dichos datos pueden contener errores,
 No existe garantía de exactitud total,
-MAY ROGA LLC NO ES RESPONSABLE por errores, omisiones, interpretaciones o decisiones basadas en dichos datos.
-El usuario exonera total y permanentemente a MAY ROGA LLC, sus directivos, desarrolladores, socios, proveedores y afiliados de cualquier reclamación legal, financiera o civil derivada del uso de estos datos.
+MAY ROGA LLC NO ES RESPONSABLE por errores, omisiones o interpretaciones de dichos datos.
+El usuario exonera total y permanentemente a MAY ROGA LLC, sus directivos, desarrolladores, socios y proveedores, de cualquier reclamación relacionada con estos datos.
 
 5. LICENCIA, DISPOSITIVOS Y CONTROL
 Acepto que:
 El acceso está limitado por licencia.
 Solo un dispositivo puede estar activo a la vez.
-La licencia puede ser revocada sin previo aviso ante uso indebido, intento de duplicación, fraude, reventa o manipulación de la aplicación.
+La licencia puede ser revocada sin previo aviso ante uso indebido.
 
 6. EXONERACIÓN TOTAL DE RESPONSABILIDAD
 Renuncio expresa, irrevocable y permanentemente a:
@@ -79,17 +76,11 @@ Demandas,
 Reclamos,
 Acciones legales,
 Denuncias administrativas o judiciales,
-Indemnizaciones de cualquier tipo,
-Contra AL-CIELO-BY-MAY-ROGA-LLC, MAY ROGA LLC, sus representantes, empleados, afiliados o cualquier tercero relacionado con el desarrollo, publicación o distribución de la aplicación.
+contra AL-CIELO-BY-MAY-ROGA-LLC, MAY ROGA LLC, sus representantes, empleados o afiliados.
 
-7. PRIVACIDAD Y SEGURIDAD
-Declaro que los datos del dispositivo, ubicación, licencias y cualquier información almacenada **pueden ser utilizada para control de acceso y auditoría legal**, y exonero a MAY ROGA LLC de cualquier responsabilidad por la protección de datos frente a terceros ajenos a la empresa.
-
-8. JURISDICCIÓN, LEY APLICABLE Y ARBITRAJE
+7. JURISDICCIÓN Y LEY APLICABLE
 Este acuerdo se rige exclusivamente por las leyes de los Estados Unidos.
 Cualquier disputa será resuelta únicamente en tribunales competentes de EE. UU.
-El usuario renuncia a cualquier reclamo en tribunales internacionales.
-Se permite a MAY ROGA LLC ejercer **arbitraje obligatorio** en caso de conflicto legal.
 
 ✅ SIN ACEPTACIÓN EXPLÍCITA, NO EXISTE ACCESO AL SISTEMA.
 </textarea>
@@ -109,6 +100,7 @@ async function activarServicio() {
     return;
   }
 
+  // Detectar dispositivo y almacenamiento
   const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
   localStorage.setItem("device_id", device_id);
 
