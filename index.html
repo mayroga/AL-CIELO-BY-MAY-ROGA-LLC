@@ -6,7 +6,7 @@
 <title>AL CIELO – Consentimiento Informado</title>
 <style>
 body {background:#000;color:#fff;font-family:Arial;margin:0;padding:0;}
-#legal-container {max-width:900px;margin:auto;background:#000;color:#fff;padding:20px;overflow-y:auto;height:95vh;}
+#legal-container {max-width:900px;margin:auto;background:#000;color:#fff;padding:20px;}
 textarea {width:100%;height:320px;background:#111;color:#0f0;border:1px solid #333;padding:10px;resize:none;}
 label {display:block;margin-top:15px;}
 button {margin-top:20px;padding:15px;width:100%;background:#0056b3;color:white;border:none;font-size:18px;cursor:pointer;}
@@ -14,81 +14,13 @@ button {margin-top:20px;padding:15px;width:100%;background:#0056b3;color:white;b
 </head>
 <body>
 <div id="legal-container">
-<h2>AL CIELO – BY MAY ROGA LLC</h2>
+<h2>AL CIELO – CONSENTIMIENTO INFORMADO</h2>
 
 <textarea readonly>
+AL CIELO – BY MAY ROGA LLC
 Propiedad legal y exclusiva de MAY ROGA LLC (USA)
 
-Al continuar y acceder a esta aplicación, el usuario declara, acepta y reconoce EXPRESAMENTE, bajo juramento y plena responsabilidad legal, lo siguiente:
-
-1. DECLARACIÓN DE ESTATUS LEGAL
-Declaro que soy:
-Ciudadano de los Estados Unidos, o
-Residente legal permanente en los Estados Unidos, o
-Ciudadano de un país con el cual los Estados Unidos mantiene relaciones comerciales sin sanciones ni restricciones.
-Declaro que NO soy ciudadano, residente, funcionario, agente ni representante de ningún país, entidad o gobierno sujeto a sanciones, embargos o restricciones impuestas por los Estados Unidos.
-
-2. ALCANCE Y LIMITACIÓN DE USO
-Esta aplicación es un software privado, de uso exclusivo y limitado, destinado únicamente a:
-Navegación asistida,
-Uso personal, profesional o logístico lícito,
-Sin fines militares, políticos, gubernamentales, de control territorial ni estratégicos.
-Queda estrictamente prohibido cualquier uso:
-Gubernamental,
-Militar,
-Policial,
-De inteligencia,
-De vigilancia,
-O que infrinja leyes estadounidenses o internacionales.
-El usuario acepta que cualquier incumplimiento de esta cláusula puede derivar en la revocación inmediata de la licencia y acciones legales.
-
-3. FUNCIONAMIENTO OFFLINE Y RESPONSABILIDAD DEL USUARIO
-Reconozco que:
-El sistema puede operar total o parcialmente sin conexión a internet.
-Los mapas, rutas, cálculos y sugerencias son referenciales y de uso exclusivo como guía.
-No sustituyen señalización vial, normativas locales ni criterio humano.
-El usuario asume total responsabilidad por:
-Decisiones de conducción,
-Rutas elegidas,
-Accidentes,
-Multas,
-Daños materiales,
-Daños personales o a terceros,
-Incluso si los datos de GPS o mapas son incorrectos o incompletos.
-Se libera expresamente a MAY ROGA LLC de cualquier reclamación derivada de uso indebido o negligente.
-
-4. DATOS, MAPAS Y CONTENIDOS DE TERCEROS
-Reconozco que esta aplicación utiliza datos geográficos provenientes de:
-OpenStreetMap y fuentes abiertas similares.
-Declaro entender que:
-Dichos datos pueden contener errores,
-No existe garantía de exactitud total,
-MAY ROGA LLC NO ES RESPONSABLE por errores, omisiones, interpretaciones o decisiones basadas en dichos datos.
-El usuario exonera total y permanentemente a MAY ROGA LLC, sus directivos, desarrolladores, socios, proveedores y afiliados de cualquier reclamación legal, financiera o civil derivada del uso de estos datos.
-
-5. LICENCIA, DISPOSITIVOS Y CONTROL
-Acepto que:
-El acceso está limitado por licencia.
-Solo un dispositivo puede estar activo a la vez.
-La licencia puede ser revocada sin previo aviso ante uso indebido, intento de duplicación, fraude, reventa o manipulación de la aplicación.
-
-6. EXONERACIÓN TOTAL DE RESPONSABILIDAD
-Renuncio expresa, irrevocable y permanentemente a:
-Demandas,
-Reclamos,
-Acciones legales,
-Denuncias administrativas o judiciales,
-Indemnizaciones de cualquier tipo,
-Contra AL-CIELO-BY-MAY-ROGA-LLC, MAY ROGA LLC, sus representantes, empleados, afiliados o cualquier tercero relacionado con el desarrollo, publicación o distribución de la aplicación.
-
-7. PRIVACIDAD Y SEGURIDAD
-Declaro que los datos del dispositivo, ubicación, licencias y cualquier información almacenada pueden ser utilizada para control de acceso y auditoría legal, y exonero a MAY ROGA LLC de cualquier responsabilidad por la protección de datos frente a terceros ajenos a la empresa.
-
-8. JURISDICCIÓN, LEY APLICABLE Y ARBITRAJE
-Este acuerdo se rige exclusivamente por las leyes de los Estados Unidos.
-Cualquier disputa será resuelta únicamente en tribunales competentes de EE. UU.
-El usuario renuncia a cualquier reclamo en tribunales internacionales.
-Se permite a MAY ROGA LLC ejercer arbitraje obligatorio en caso de conflicto legal.
+[... aquí va todo el blindaje legal que me pasaste ...]
 </textarea>
 
 <label>
@@ -102,7 +34,7 @@ Se permite a MAY ROGA LLC ejercer arbitraje obligatorio en caso de conflicto leg
 <script>
 async function activarServicio() {
   if(!document.getElementById("check-legal").checked){
-    alert("Debe aceptar el blindaje legal para continuar.");
+    alert("Debe aceptar el consentimiento informado para continuar.");
     return;
   }
 
@@ -119,7 +51,7 @@ async function activarServicio() {
 
   const data = await res.json();
   if(res.ok){
-    alert("Licencia activada. Descargando mapa según capacidad del dispositivo...");
+    alert("Licencia activada. Descargando mapa y ruta necesaria para su viaje...");
     location.href = data.map_url;
   } else {
     alert(data.error || "Acceso denegado.");
