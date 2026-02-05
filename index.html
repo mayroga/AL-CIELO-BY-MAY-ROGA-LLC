@@ -8,32 +8,50 @@ Propiedad legal y exclusiva de MAY ROGA LLC (USA)
 
 CONSENTIMIENTO INFORMADO, TÉRMINOS DE USO Y DESCARGO TOTAL DE RESPONSABILIDAD
 
-Al continuar y acceder a esta aplicación, el usuario declara, acepta y reconoce EXPRESAMENTE, bajo juramento y plena responsabilidad legal, lo siguiente:
-
 1. DECLARACIÓN DE ESTATUS LEGAL
-Declaro que soy ciudadano de EE.UU., residente legal permanente en EE.UU., o ciudadano de un país sin sanciones por EE.UU. Declaro que NO soy ciudadano, residente, funcionario, agente ni representante de ningún país sujeto a sanciones de EE.UU.
+Declaro que soy:
+- Ciudadano de los Estados Unidos, o
+- Residente legal permanente en los Estados Unidos, o
+- Ciudadano de un país con el cual los Estados Unidos mantiene relaciones comerciales sin sanciones ni restricciones.
+Declaro que NO soy ciudadano, residente, funcionario, agente ni representante de ningún país, entidad o gobierno sujeto a sanciones, embargos o restricciones impuestas por los Estados Unidos.
 
 2. ALCANCE Y LIMITACIÓN DE USO
-Uso exclusivo para navegación asistida personal, profesional o logística lícita. Prohibido uso militar, gubernamental, de inteligencia, vigilancia o que infrinja leyes de EE.UU.
+Esta aplicación es un software privado, de uso exclusivo y limitado, destinado únicamente a:
+- Navegación asistida
+- Uso personal, profesional o logístico lícito
+- Sin fines militares, políticos, gubernamentales, de control territorial ni estratégicos
+Queda estrictamente prohibido cualquier uso:
+- Gubernamental
+- Militar
+- Policial
+- De inteligencia
+- De vigilancia
+- O que infrinja leyes estadounidenses o internacionales
 
 3. FUNCIONAMIENTO OFFLINE Y RESPONSABILIDAD DEL USUARIO
-Sistema offline total/parcial, mapas referenciales. Asumo responsabilidad total por decisiones de conducción, rutas, accidentes, multas, daños materiales o personales.
+Reconozco que el sistema puede operar total o parcialmente sin conexión a internet.
+Los mapas, rutas, cálculos y sugerencias son referenciales.
+No sustituyen señalización vial, normativas locales ni criterio humano.
+Asumo total responsabilidad por decisiones de conducción, rutas elegidas, accidentes, multas, daños materiales, daños personales o a terceros.
 
 4. DATOS, MAPAS Y CONTENIDOS DE TERCEROS
-Datos geográficos provienen de OpenStreetMap y fuentes abiertas. Los datos pueden contener errores. MAY ROGA LLC NO ES RESPONSABLE. El usuario exonera a MAY ROGA LLC y afiliados.
+Los datos geográficos provienen de OpenStreetMap y fuentes abiertas similares.
+Reconozco que pueden contener errores y que MAY ROGA LLC no es responsable.
+El usuario exonera a MAY ROGA LLC de cualquier reclamación relacionada con estos datos.
 
 5. LICENCIA, DISPOSITIVOS Y CONTROL
-Acceso limitado por licencia. Solo un dispositivo activo a la vez (excepto licencias de prueba autorizadas). Licencia puede ser revocada ante uso indebido.
+Acepto que:
+- El acceso está limitado por licencia
+- Solo un dispositivo puede estar activo a la vez (excepto prueba interna)
+- La licencia puede ser revocada sin previo aviso ante uso indebido
 
 6. EXONERACIÓN TOTAL DE RESPONSABILIDAD
-Renuncio a demandas, reclamos o acciones legales contra AL-CIELO-BY-MAY-ROGA-LLC, MAY ROGA LLC o sus representantes.
+Renuncio expresa, irrevocable y permanentemente a demandas, reclamos, acciones legales o denuncias contra AL-CIELO-BY-MAY-ROGA-LLC, MAY ROGA LLC, sus representantes, empleados o afiliados.
 
 7. JURISDICCIÓN Y LEY APLICABLE
-Rige exclusivamente la ley de EE.UU. y tribunales competentes de EE.UU.
+Este acuerdo se rige exclusivamente por las leyes de los Estados Unidos.
 
-✅ SIN ACEPTACIÓN EXPLÍCITA, NO EXISTE ACCESO AL SISTEMA.
-
-Atribución de datos: Mapas y datos de OpenStreetMap © OpenStreetMap contributors
+OSM Attribution: Map data © <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors
 </textarea>
 
 <label style="display:block;margin-top:15px;">
@@ -55,18 +73,17 @@ async function activarServicio(){
 
   const link_id = location.pathname.split("/").pop();
 
+  // Verificar consentimiento legal solo si NO es licencia de prueba
+  const legal_ok = document.getElementById("check-legal")?.checked || false;
+
   const res = await fetch(`/activar/${link_id}`, {
     method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({device_id, legal_ok:true})
+    body:JSON.stringify({device_id, legal_ok})
   });
 
   const data = await res.json();
-  if(res.ok){
-    alert("Licencia activada! Descargando mapa...");
-    location.href = data.map_url;
-  } else {
-    alert(data.error || "Acceso denegado.");
-  }
+  if(res.ok) location.href = data.map_url;
+  else alert(data.error || "Acceso denegado.");
 }
 </script>
