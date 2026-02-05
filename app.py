@@ -16,9 +16,7 @@ PLANES = {
     "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Prueba Admin ($0.00)"]
 }
 
-PRUEBA_LINK_ID = "PRUEBA123"  # Tu licencia de prueba interna
-
-VIEWER_HTML = """[MANTENER EL HTML DEL VISOR TAL COMO LO TENÍAS]"""
+VIEWER_HTML = """ ... tu código de visor Leaflet completo ... """
 
 @app.route("/")
 def home():
@@ -31,9 +29,10 @@ def home():
 
 @app.route("/checkout/<pid>")
 def checkout(pid):
+    # Prueba interna gratuita
     if pid == "price_1Sv6H2BOA5mT4t0PppizlRAK":
-        lid = PRUEBA_LINK_ID
-        create_license(lid, f"ADMIN_{lid}", (datetime.utcnow() + timedelta(days=28)).strftime("%Y-%m-%d %H:%M:%S"))
+        lid = str(uuid.uuid4())[:8]
+        create_license(lid, f"ADMIN_{lid}", (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S"))
         return redirect(f"/activar/{lid}")
     session = stripe.checkout.Session.create(
         payment_method_types=["card"], mode="payment",
@@ -56,46 +55,21 @@ def link_redirect(session_id):
 @app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
     lic = get_license_by_link(link_id)
-    if not lic:
-        # Crear licencia si es prueba
-        if link_id == PRUEBA_LINK_ID:
-            create_license(PRUEBA_LINK_ID, f"ADMIN_{PRUEBA_LINK_ID}", (datetime.utcnow() + timedelta(days=28)).strftime("%Y-%m-%d %H:%M:%S"))
-            lic = get_license_by_link(PRUEBA_LINK_ID)
-        else:
-            return jsonify({"error":"Licencia no encontrada"}), 404
+    if not lic: return "DENEGADO", 403
 
     if request.method == "POST":
-        device_id = request.json.get("device_id")
         legal_ok = request.json.get("legal_ok", False)
-
-        # Excepción para licencia de prueba
-        if link_id == PRUEBA_LINK_ID:
-            # Permitir hasta 3 dispositivos
-            conn = set_active_device(link_id, device_id)  # Reutiliza función, modificar si excede 3
-            return jsonify({"status":"OK","map_url":"/viewer/"+link_id})
-
-        # Para usuarios normales, exigir legal_ok
-        if not legal_ok:
+        # Permitir acceso gratuito a prueba interna sin legal_ok
+        if not lic[0].startswith("ADMIN_") and not legal_ok:
             return jsonify({"error":"Consentimiento legal requerido"}), 403
+        set_active_device(link_id, request.json.get("device_id"))
+        return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
+    
+    # Render HTML legal solo si no es prueba interna
+    if lic[0].startswith("ADMIN_"):
+        return redirect(f"/viewer/{link_id}")
 
-        set_active_device(link_id, device_id)
-        return jsonify({"status":"OK","map_url":"/viewer/"+link_id})
-
-    return render_template_string("""
-    <body style='background:#000; color:white; text-align:center; padding-top:100px;'>
-    <h2>AL CIELO BY MAY ROGA LLC</h2>
-    <button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR AL SISTEMA</button>
-    <script>
-    function act(){
-        fetch('',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({device_id:crypto.randomUUID(), legal_ok:true})
-        }).then(r=>r.json()).then(d=>window.location.href=d.map_url)
-    }
-    </script>
-    </body>
-    """)
+    return render_template_string(open("index.html").read())
 
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
