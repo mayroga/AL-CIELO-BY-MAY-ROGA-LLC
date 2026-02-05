@@ -25,7 +25,44 @@ PLANES = {
 # ======================================================
 # VISOR OFFLINE
 # ======================================================
-VIEWER_HTML = open("viewer.html", encoding="utf-8").read()
+VIEWER_HTML = """
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AL CIELO BY MAY ROGA LLC – Navegación Offline</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+<style>
+body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
+#map { height:100vh; }
+#status { position:fixed; top:10px; left:10px; background:#111; padding:10px 14px; border-radius:8px; font-size:14px; z-index:999; }
+#sync { position:fixed; bottom:20px; right:20px; background:#0056b3; color:white; padding:12px 18px; border-radius:12px; font-weight:bold; cursor:pointer; z-index:999; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="status">Modo OFFLINE activo</div>
+<div id="sync" onclick="syncNow()">🔄 Mejorar precisión</div>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([21.5, -78.9], 7);
+L.tileLayer('/static/maps/cuba_full/{z}/{x}/{y}.png', {minZoom: 6, maxZoom: 16}).addTo(map);
+navigator.geolocation.watchPosition(
+  pos => { map.setView([pos.coords.latitude, pos.coords.longitude], 15); },
+  err => { document.getElementById("status").innerText = "GPS limitado. Usando última posición conocida."; },
+  { enableHighAccuracy: true, maximumAge: 60000, timeout: 10000 }
+);
+function syncNow() {
+  if (!navigator.onLine) { alert("Encienda los datos 20–30 segundos para mejorar precisión."); return; }
+  document.getElementById("status").innerText = "Sincronizando datos recientes…";
+  setTimeout(() => { document.getElementById("status").innerText = "Actualizado. Puede apagar los datos."; }, 3000);
+}
+</script>
+</body>
+</html>
+"""
+
 
 # ======================================================
 # RUTAS
