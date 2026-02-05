@@ -66,15 +66,8 @@ VIEWER_HTML = """
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
     <script>
-        // ================= MAPA =================
         var map = L.map('map', { zoomControl: false }).setView([23.1136, -82.3666], 12);
-
-        // Tiles locales offline desde carpeta generada por extraer.py
-        L.tileLayer('/static/maps/cuba_tiles/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '© OpenStreetMap',
-            errorTileUrl: '/static/maps/tiles_placeholder.png'
-        }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         var carMarker = L.marker([0,0], {
             icon: L.divIcon({html: '🚗', className: 'car-icon', iconSize: [50, 50]})
@@ -82,54 +75,55 @@ VIEWER_HTML = """
 
         var control = L.Routing.control({
             waypoints: [],
-            router: L.Routing.OSRMv1({ serviceUrl: '/static/osrm/' }), // Rutas offline
-            lineOptions: { styles: [{color: '#00ff00', opacity: 1, weight: 6}] },
+            router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1', profile: 'car' }),
+            lineOptions: { styles: [{color: '#00ff00', opacity: 1, weight: 10}] },
             language: 'es',
             createMarker: function() { return null; }
         }).addTo(map);
 
         let ultimaVoz = "";
 
-        // ================= FUNCIONES =================
         async function buscarLugar(q) {
-            // Aquí se puede usar geocoding offline más tarde
-            return null;
+            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q},Cuba&limit=1`);
+            const d = await r.json();
+            return d.length > 0 ? L.latLng(d[0].lat, d[0].lon) : null;
         }
 
         async function iniciarNavegacion() {
-            // Por ahora se toma posición actual como inicio y usuario introduce destino
-            const p1 = carMarker.getLatLng(); // Posición actual
-            const p2 = L.latLng(23.1136, -82.3666); // Temporal, reemplazar con geocoding offline
-            control.setWaypoints([p1, p2]);
-            hablar("Ruta calculada. Inicie el movimiento del vehículo.");
-            activarMonitoreo();
+            const p1 = await buscarLugar(document.getElementById('origen').value);
+            const p2 = await buscarLugar(document.getElementById('destino').value);
+            if(p1 && p2) {
+                control.setWaypoints([p1, p2]);
+                hablar("Ruta calculada. Inicie el movimiento del vehículo.");
+                activarMonitoreo();
+            }
         }
 
         function activarMonitoreo() {
             navigator.geolocation.watchPosition(pos => {
                 const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
                 const vel = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
-                
+               
                 document.getElementById('vel').innerText = vel;
                 carMarker.setLatLng(latlng);
                 map.setView(latlng, 18);
 
                 if (vel > 5) {
                     procesarInstrucciones(latlng);
-                    dibujarMuros(latlng);
+                    dibujarMurosRojos(latlng);
                 }
             }, null, { enableHighAccuracy: true });
         }
 
-        function dibujarMuros(pos) {
-            const delta = 0.00005; // Pequeñas vías bloqueadas
-            const lines = [
-                [[pos.lat + delta, pos.lng + delta], [pos.lat + delta*2, pos.lng + delta*2]],
-                [[pos.lat - delta, pos.lng - delta], [pos.lat - delta*2, pos.lng - delta*2]]
+        function dibujarMurosRojos(pos) {
+            const angulo = 0.0004;
+            const lineas = [
+                [[pos.lat + angulo, pos.lng + angulo], [pos.lat + angulo + 0.0001, pos.lng + angulo + 0.0001]],
+                [[pos.lat - angulo, pos.lng - angulo], [pos.lat - angulo - 0.0001, pos.lng - angulo - 0.0001]]
             ];
-            lines.forEach(l => {
-                let line = L.polyline(l, {color: 'red', weight: 2, opacity: 0.6}).addTo(map);
-                setTimeout(()=>map.removeLayer(line), 3000);
+            lineas.forEach(l => {
+                let pLine = L.polyline(l, {color: 'red', weight: 8, opacity: 0.8}).addTo(map);
+                setTimeout(() => map.removeLayer(pLine), 3000);
             });
         }
 
@@ -137,7 +131,7 @@ VIEWER_HTML = """
 
         control.on('routesfound', function(e) {
             const instruccion = e.routes[0].instructions[0];
-            if(instruccion && instruccion.text !== ultimaVoz) {
+            if (instruccion && instruccion.text !== ultimaVoz) {
                 document.getElementById('instrucciones').innerText = instruccion.text;
                 hablar(instruccion.text);
                 ultimaVoz = instruccion.text;
@@ -154,20 +148,24 @@ VIEWER_HTML = """
 
         function reiniciarRuta() {
             control.setWaypoints([]);
+            document.getElementById('origen').value = "";
+            document.getElementById('destino').value = "";
             document.getElementById('instrucciones').innerText = "ESPERANDO NUEVA RUTA";
             hablar("Sistema reiniciado.");
         }
 
         async function buscarCerca(tipo) {
-            alert("Función de búsqueda offline de " + tipo + " aún en desarrollo.");
+            const pos = carMarker.getLatLng();
+            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${tipo}&lat=${pos.lat}&lon=${pos.lng}&zoom=15`);
+            const d = await r.json();
+            d.forEach(l => L.marker([l.lat, l.lon]).addTo(map).bindPopup(l.display_name).openPopup());
+            hablar("Buscando " + tipo + " cerca de su posición.");
         }
-
     </script>
 </body>
 </html>
 """
 
-# ================= RUTAS FLASK =================
 @app.route("/")
 def home():
     html = '<div style="max-width:400px; margin:auto; text-align:center; font-family:sans-serif; background:#000; color:white; padding:40px; border-radius:20px; border: 2px solid #0056b3;">'
@@ -201,21 +199,12 @@ def link_redirect(session_id):
     lid = get_license_by_session(session_id)
     return redirect(f"/activar/{lid}") if lid else ("Confirmando...", 404)
 
-@app.route("/activar/<link_id>", methods=["GET","POST"])
+@app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
-    if request.method=="POST":
+    if request.method == "POST":
         set_active_device(link_id, request.json.get("device_id"))
-        return jsonify({"status":"OK","map_url":f"/viewer/{link_id}"})
-    return render_template_string("""
-    <body style='background:#000; color:white; text-align:center; padding-top:100px;'>
-    <h2>AL CIELO BY MAY ROGA LLC</h2>
-    <button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR AL SISTEMA</button>
-    <script>
-    function act(){
-        fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})})
-        .then(r=>r.json()).then(d=>window.location.href=d.map_url)
-    }
-    </script></body>""")
+        return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
+    return render_template_string("<body style='background:#000; color:white; text-align:center; padding-top:100px;'><h2>AL CIELO BY MAY ROGA LLC</h2><button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR AL SISTEMA</button><script>function act(){ fetch('',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:crypto.randomUUID()})}).then(r=>r.json()).then(d=>window.location.href=d.map_url)}</script></body>")
 
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
@@ -223,5 +212,5 @@ def viewer(link_id):
     if not lic: return "DENEGADO", 403
     return render_template_string(VIEWER_HTML, expira=lic[1])
 
-if __name__=="__main__":
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
