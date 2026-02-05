@@ -100,7 +100,6 @@ async function activarServicio() {
     return;
   }
 
-  // Detectar dispositivo y almacenamiento
   const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
   localStorage.setItem("device_id", device_id);
 
