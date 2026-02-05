@@ -16,7 +16,7 @@ PLANES = {
     "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Prueba Admin ($0.00)"]
 }
 
-VIEWER_HTML = """ ... tu código de visor Leaflet completo ... """
+VIEWER_HTML = """ ... (tu código viewer actual, sin cambios) ... """
 
 @app.route("/")
 def home():
@@ -29,7 +29,6 @@ def home():
 
 @app.route("/checkout/<pid>")
 def checkout(pid):
-    # Prueba interna gratuita
     if pid == "price_1Sv6H2BOA5mT4t0PppizlRAK":
         lid = str(uuid.uuid4())[:8]
         create_license(lid, f"ADMIN_{lid}", (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S"))
@@ -54,22 +53,28 @@ def link_redirect(session_id):
 
 @app.route("/activar/<link_id>", methods=["GET", "POST"])
 def activar(link_id):
-    lic = get_license_by_link(link_id)
-    if not lic: return "DENEGADO", 403
-
     if request.method == "POST":
-        legal_ok = request.json.get("legal_ok", False)
-        # Permitir acceso gratuito a prueba interna sin legal_ok
-        if not lic[0].startswith("ADMIN_") and not legal_ok:
+        # ✅ Verificación de consentimiento legal
+        if not request.json.get("legal_ok"):
             return jsonify({"error":"Consentimiento legal requerido"}), 403
         set_active_device(link_id, request.json.get("device_id"))
         return jsonify({"status": "OK", "map_url": f"/viewer/{link_id}"})
-    
-    # Render HTML legal solo si no es prueba interna
-    if lic[0].startswith("ADMIN_"):
-        return redirect(f"/viewer/{link_id}")
-
-    return render_template_string(open("index.html").read())
+    # Página de aceptación por GET
+    return render_template_string("""
+    <body style='background:#000; color:white; text-align:center; padding-top:100px;'>
+        <h2>AL CIELO BY MAY ROGA LLC</h2>
+        <button style='padding:20px; background:#0056b3; color:white; border:none; border-radius:10px; font-size:20px;' onclick='act()'>ACEPTAR Y ENTRAR AL SISTEMA</button>
+        <script>
+        function act(){
+            fetch('',{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({device_id:crypto.randomUUID(), legal_ok:true})
+            }).then(r=>r.json()).then(d=>window.location.href=d.map_url)
+        }
+        </script>
+    </body>
+    """)
 
 @app.route("/viewer/<link_id>")
 def viewer(link_id):
