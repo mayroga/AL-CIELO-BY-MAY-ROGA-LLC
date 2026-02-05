@@ -69,21 +69,20 @@ VIEWER_HTML = """
         // ================= MAPA =================
         var map = L.map('map', { zoomControl: false }).setView([23.1136, -82.3666], 12);
 
-        // Tiles locales offline
-        L.tileLayer('/static/maps/{z}/{x}/{y}.png', {
+        // Tiles locales offline desde carpeta generada por extraer.py
+        L.tileLayer('/static/maps/cuba_tiles/{z}/{x}/{y}.png', {
             maxZoom: 18,
             attribution: '© OpenStreetMap',
-            errorTileUrl: '/static/maps/tiles_placeholder.png' // opcional
+            errorTileUrl: '/static/maps/tiles_placeholder.png'
         }).addTo(map);
 
         var carMarker = L.marker([0,0], {
             icon: L.divIcon({html: '🚗', className: 'car-icon', iconSize: [50, 50]})
         }).addTo(map);
 
-        // Control de rutas offline básico
         var control = L.Routing.control({
             waypoints: [],
-            router: L.Routing.OSRMv1({ serviceUrl: '/static/osrm/' }), // Ruta offline (si se exporta OSRM)
+            router: L.Routing.OSRMv1({ serviceUrl: '/static/osrm/' }), // Rutas offline
             lineOptions: { styles: [{color: '#00ff00', opacity: 1, weight: 6}] },
             language: 'es',
             createMarker: function() { return null; }
@@ -93,25 +92,17 @@ VIEWER_HTML = """
 
         // ================= FUNCIONES =================
         async function buscarLugar(q) {
-            // Aquí se puede usar base de datos local offline para geocoding
-            const r = await fetch(`/static/geocoding/${q}.json`).catch(()=>null);
-            if(r) {
-                const d = await r.json();
-                return L.latLng(d.lat, d.lon);
-            }
+            // Aquí se puede usar geocoding offline más tarde
             return null;
         }
 
         async function iniciarNavegacion() {
-            const p1 = await buscarLugar(document.getElementById('origen').value);
-            const p2 = await buscarLugar(document.getElementById('destino').value);
-            if(p1 && p2) {
-                control.setWaypoints([p1, p2]);
-                hablar("Ruta calculada. Inicie el movimiento del vehículo.");
-                activarMonitoreo();
-            } else {
-                alert("No se encontró origen o destino en la base offline.");
-            }
+            // Por ahora se toma posición actual como inicio y usuario introduce destino
+            const p1 = carMarker.getLatLng(); // Posición actual
+            const p2 = L.latLng(23.1136, -82.3666); // Temporal, reemplazar con geocoding offline
+            control.setWaypoints([p1, p2]);
+            hablar("Ruta calculada. Inicie el movimiento del vehículo.");
+            activarMonitoreo();
         }
 
         function activarMonitoreo() {
@@ -130,9 +121,8 @@ VIEWER_HTML = """
             }, null, { enableHighAccuracy: true });
         }
 
-        // ================= VIAS BLOQUEADAS =================
         function dibujarMuros(pos) {
-            const delta = 0.00005; // más fino, se ve como vía
+            const delta = 0.00005; // Pequeñas vías bloqueadas
             const lines = [
                 [[pos.lat + delta, pos.lng + delta], [pos.lat + delta*2, pos.lng + delta*2]],
                 [[pos.lat - delta, pos.lng - delta], [pos.lat - delta*2, pos.lng - delta*2]]
@@ -143,9 +133,7 @@ VIEWER_HTML = """
             });
         }
 
-        function procesarInstrucciones(pos) {
-            // Aquí se puede integrar cálculo offline de ruta y pasos
-        }
+        function procesarInstrucciones(pos) {}
 
         control.on('routesfound', function(e) {
             const instruccion = e.routes[0].instructions[0];
@@ -166,14 +154,11 @@ VIEWER_HTML = """
 
         function reiniciarRuta() {
             control.setWaypoints([]);
-            document.getElementById('origen').value = "";
-            document.getElementById('destino').value = "";
             document.getElementById('instrucciones').innerText = "ESPERANDO NUEVA RUTA";
             hablar("Sistema reiniciado.");
         }
 
         async function buscarCerca(tipo) {
-            // Aquí también usar POIs offline
             alert("Función de búsqueda offline de " + tipo + " aún en desarrollo.");
         }
 
