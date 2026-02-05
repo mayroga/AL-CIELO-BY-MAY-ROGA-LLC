@@ -1,125 +1,61 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AL CIELO – Consentimiento Informado</title>
-<style>
-body {background:#000;color:#fff;font-family:Arial;margin:0;padding:0;}
-#legal-container {max-width:900px;margin:auto;background:#000;color:#fff;padding:20px;}
-textarea {width:100%;height:320px;background:#111;color:#0f0;border:1px solid #333;padding:10px;resize:none;}
-label {display:block;margin-top:15px;}
-button {margin-top:20px;padding:15px;width:100%;background:#0056b3;color:white;border:none;font-size:18px;cursor:pointer;}
-</style>
-</head>
-<body>
 <div id="legal-container">
-<h2>AL CIELO – CONSENTIMIENTO INFORMADO</h2>
+  <h2>AL CIELO – TÉRMINOS Y CONDICIONES</h2>
 
-<textarea readonly>
-AL CIELO – BY MAY ROGA LLC
-Propiedad legal y exclusiva de MAY ROGA LLC (USA)
+  <p>
+    Declaro bajo mi responsabilidad que soy ciudadano o residente legal en los
+    Estados Unidos y que cumpliré con todas las leyes aplicables.
+  </p>
 
-Al continuar y acceder a esta aplicación, el usuario declara, acepta y reconoce EXPRESAMENTE, bajo juramento y plena responsabilidad legal, lo siguiente:
+  <p>
+    <strong>Descarga de mapas:</strong><br>
+    Los mapas utilizados por la aplicación son almacenados localmente en el dispositivo
+    y el acceso está limitado a 2 dispositivos por licencia. Solo un dispositivo puede
+    estar activo a la vez. La redistribución está prohibida.
+  </p>
 
-1. DECLARACIÓN DE ESTATUS LEGAL
-Declaro que soy:
-Ciudadano de los Estados Unidos, o
-Residente legal permanente en los Estados Unidos, o
-Ciudadano de un país con el cual los Estados Unidos mantiene relaciones comerciales sin sanciones ni restricciones.
-Declaro que NO soy ciudadano, residente, funcionario, agente ni representante de ningún país, entidad o gobierno sujeto a sanciones, embargos o restricciones impuestas por los Estados Unidos.
+  <p>
+    May Roga LLC no se hace responsable por el uso del software en países sancionados
+    por los Estados Unidos ni por usos no autorizados.
+  </p>
 
-2. ALCANCE Y LIMITACIÓN DE USO
-Esta aplicación es un software privado, de uso exclusivo y limitado, destinado únicamente a:
-Navegación asistida,
-Uso personal, profesional o logístico lícito,
-Sin fines militares, políticos, gubernamentales, de control territorial ni estratégicos.
-Queda estrictamente prohibido cualquier uso:
-Gubernamental,
-Militar,
-Policial,
-De inteligencia,
-De vigilancia,
-O que infrinja leyes estadounidenses o internacionales.
+  <label>
+    <input type="checkbox" id="check-legal">
+    Acepto la responsabilidad total y las condiciones de uso
+  </label>
 
-3. FUNCIONAMIENTO OFFLINE Y RESPONSABILIDAD DEL USUARIO
-Reconozco que:
-El sistema puede operar total o parcialmente sin conexión a internet.
-Los mapas, rutas, cálculos y sugerencias son referenciales.
-No sustituyen señalización vial, normativas locales ni criterio humano.
-Asumo total responsabilidad por:
-Decisiones de conducción,
-Rutas elegidas,
-Accidentes,
-Multas,
-Daños materiales,
-Daños personales o a terceros.
-
-4. DATOS, MAPAS Y CONTENIDOS DE TERCEROS
-Reconozco que esta aplicación utiliza datos geográficos provenientes de:
-OpenStreetMap y fuentes abiertas similares.
-Declaro entender que:
-Dichos datos pueden contener errores,
-No existe garantía de exactitud total,
-MAY ROGA LLC NO ES RESPONSABLE por errores, omisiones o interpretaciones de dichos datos.
-El usuario exonera total y permanentemente a MAY ROGA LLC, sus directivos, desarrolladores, socios y proveedores, de cualquier reclamación relacionada con estos datos.
-
-5. LICENCIA, DISPOSITIVOS Y CONTROL
-Acepto que:
-El acceso está limitado por licencia.
-Solo un dispositivo puede estar activo a la vez.
-La licencia puede ser revocada sin previo aviso ante uso indebido.
-
-6. EXONERACIÓN TOTAL DE RESPONSABILIDAD
-Renuncio expresa, irrevocable y permanentemente a:
-Demandas,
-Reclamos,
-Acciones legales,
-Denuncias administrativas o judiciales,
-contra AL-CIELO-BY-MAY-ROGA-LLC, MAY ROGA LLC, sus representantes, empleados o afiliados.
-
-7. JURISDICCIÓN Y LEY APLICABLE
-Este acuerdo se rige exclusivamente por las leyes de los Estados Unidos.
-Cualquier disputa será resuelta únicamente en tribunales competentes de EE. UU.
-
-✅ SIN ACEPTACIÓN EXPLÍCITA, NO EXISTE ACCESO AL SISTEMA.
-</textarea>
-
-<label>
-  <input type="checkbox" id="check-legal">
-  Declaro que he leído, comprendido y acepto TODAS las condiciones legales
-</label>
-
-<button onclick="activarServicio()">ACEPTO Y ENTRAR AL SISTEMA</button>
+  <br><br>
+  <button onclick="activarServicio()">ACTIVAR SERVICIO</button>
 </div>
 
 <script>
 async function activarServicio() {
-  if(!document.getElementById("check-legal").checked){
-    alert("Debe aceptar el consentimiento informado para continuar.");
+  if(!document.getElementById('check-legal').checked) {
+    alert("Debe aceptar el blindaje legal para continuar.");
     return;
   }
 
-  // Detectar dispositivo y almacenamiento
   const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
   localStorage.setItem("device_id", device_id);
 
-  const link_id = location.pathname.split("/").pop();
+  const link_id = window.location.pathname.split("/").pop();
 
   const res = await fetch(`/activar/${link_id}`, {
     method: "POST",
     headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({device_id, legal_ok:true})
+    body: JSON.stringify({
+      device_id: device_id,
+      legal_ok: true
+    })
   });
 
   const data = await res.json();
-  if(res.ok) {
-    alert("Licencia activada. Descargando mapa según capacidad del dispositivo...");
-    location.href = data.map_url;
+
+  if(res.ok){
+    alert("Licencia activada! Descargando mapa...");
+    // Aquí podrías iniciar la descarga del mapa usando data.map_url
+    window.location.href = data.map_url; // descarga directa
   } else {
-    alert(data.error || "Acceso denegado.");
+    alert(data.error || "Error al activar licencia");
   }
 }
 </script>
-</body>
-</html>
