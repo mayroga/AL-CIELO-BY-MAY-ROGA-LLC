@@ -1,61 +1,77 @@
-<div id="legal-container">
-  <h2>AL CIELO – TÉRMINOS Y CONDICIONES</h2>
+<div id="legal-container" style="max-width:900px;margin:auto;background:#000;color:#fff;padding:20px;font-family:Arial">
 
-  <p>
-    Declaro bajo mi responsabilidad que soy ciudadano o residente legal en los
-    Estados Unidos y que cumpliré con todas las leyes aplicables.
-  </p>
+<h2>AL CIELO – CONSENTIMIENTO INFORMADO</h2>
 
-  <p>
-    <strong>Descarga de mapas:</strong><br>
-    Los mapas utilizados por la aplicación son almacenados localmente en el dispositivo
-    y el acceso está limitado a 2 dispositivos por licencia. Solo un dispositivo puede
-    estar activo a la vez. La redistribución está prohibida.
-  </p>
+<textarea readonly style="width:100%;height:320px;background:#111;color:#0f0;border:1px solid #333;padding:10px;">
+AL CIELO – BY MAY ROGA LLC
+Propiedad legal y exclusiva de MAY ROGA LLC (USA)
 
-  <p>
-    May Roga LLC no se hace responsable por el uso del software en países sancionados
-    por los Estados Unidos ni por usos no autorizados.
-  </p>
+Al continuar y acceder a esta aplicación, el usuario declara, acepta y reconoce EXPRESAMENTE, bajo juramento y plena responsabilidad legal, lo siguiente:
 
-  <label>
-    <input type="checkbox" id="check-legal">
-    Acepto la responsabilidad total y las condiciones de uso
-  </label>
+1. DECLARACIÓN DE ESTATUS LEGAL
+Declaro que soy ciudadano de EE. UU., residente legal permanente, o ciudadano de país sin sanciones.
+Declaro que NO soy ciudadano, residente, agente ni representante de países sancionados.
 
-  <br><br>
-  <button onclick="activarServicio()">ACTIVAR SERVICIO</button>
+2. ALCANCE Y LIMITACIÓN DE USO
+Uso exclusivo para navegación asistida, personal, profesional o logística lícita.
+Prohibido uso militar, gubernamental, policial, de inteligencia, vigilancia o ilegal.
+
+3. FUNCIONAMIENTO OFFLINE
+Sistema puede operar parcial o totalmente sin internet.
+Mapas, rutas e instrucciones son referenciales.
+Asumo responsabilidad total de decisiones, accidentes, multas y daños.
+
+4. DATOS DE TERCEROS
+Se usan datos de OpenStreetMap y fuentes abiertas.
+Errores posibles; MAY ROGA LLC no se responsabiliza.
+
+5. LICENCIA Y DISPOSITIVOS
+Acceso limitado por licencia; un dispositivo activo a la vez.
+Licencia revocable sin previo aviso.
+
+6. EXONERACIÓN TOTAL
+Renuncio a demandas o reclamos contra AL CIELO, MAY ROGA LLC y afiliados.
+
+7. JURISDICCIÓN
+Ley exclusiva de EE. UU. y tribunales competentes.
+
+SIN ACEPTACIÓN EXPLÍCITA, NO EXISTE ACCESO AL SISTEMA.
+</textarea>
+
+<label style="display:block;margin-top:15px;">
+  <input type="checkbox" id="check-legal">
+  Declaro que he leído, comprendido y acepto TODAS las condiciones legales
+</label>
+
+<button style="margin-top:20px;padding:15px;width:100%;background:#0056b3;color:white;border:none;font-size:18px"
+onclick="activarServicio()">
+ACEPTO Y ENTRAR AL SISTEMA
+</button>
+
 </div>
 
 <script>
-async function activarServicio() {
-  if(!document.getElementById('check-legal').checked) {
-    alert("Debe aceptar el blindaje legal para continuar.");
+async function activarServicio(){
+  if(!document.getElementById("check-legal").checked){
+    alert("Debe aceptar el consentimiento informado para continuar.");
     return;
   }
 
   const device_id = localStorage.getItem("device_id") || crypto.randomUUID();
   localStorage.setItem("device_id", device_id);
 
-  const link_id = window.location.pathname.split("/").pop();
+  const link_id = location.pathname.split("/").pop();
 
   const res = await fetch(`/activar/${link_id}`, {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({
-      device_id: device_id,
-      legal_ok: true
-    })
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({device_id, legal_ok:true})
   });
 
   const data = await res.json();
-
-  if(res.ok){
-    alert("Licencia activada! Descargando mapa...");
-    // Aquí podrías iniciar la descarga del mapa usando data.map_url
-    window.location.href = data.map_url; // descarga directa
-  } else {
-    alert(data.error || "Error al activar licencia");
-  }
+  if(res.ok) {
+    alert("Licencia activada correctamente. Modo de operación automático activado.");
+    location.href = data.map_url;
+  } else alert(data.error || "Acceso denegado.");
 }
 </script>
