@@ -17,7 +17,7 @@ stripe.api_key = STRIPE_SECRET_KEY
 PLANES = {
     "price_1Sv5uXBOA5mT4t0PtV7RaYCa": [15.00, 10, "Plan 10 Días"],
     "price_1Sv69jBOA5mT4t0PUA7yiisS": [25.00, 28, "Plan 28 Días"],
-    "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Prueba Admin ($0.00)"]  # SOLO PARA MAYKEL
+    "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Prueba Admin ($0.00)"]  # SOLO PARA TI
 }
 
 # ===================== VISOR OFFLINE =====================
@@ -53,14 +53,17 @@ async function loadOfflineRoute(){
     const res = await fetch('/get_route_data');
     if(!res.ok){ alert("Error descargando datos offline"); return; }
     const data = await res.json();
-    const bounds = data.bounds;
-    const route = data.route;
+    const bounds = data.bounds; // [southWest, northEast]
+    const route = data.route;   // Array de lat,lng
 
+    // Tiles offline
     L.tileLayer('/static/maps/tiles/{z}/{x}/{y}.png', {maxZoom:16,minZoom:6}).addTo(map);
 
+    // Ruta
     if(routeLayer) map.removeLayer(routeLayer);
     routeLayer = L.polyline(route, {color:'#00ff00', weight:5}).addTo(map);
 
+    // Centrar mapa en origen
     map.fitBounds(routeLayer.getBounds());
     tilesDownloaded = true;
 }
@@ -96,6 +99,7 @@ function syncNow(){
   fetch('/get_route_data').then(()=>setTimeout(()=>{document.getElementById("status").innerText = "Actualizado. Puede apagar los datos."},3000));
 }
 
+// Cargar ruta offline al iniciar
 loadOfflineRoute();
 </script>
 </body>
@@ -107,17 +111,18 @@ loadOfflineRoute();
 def home():
     html = '<div style="max-width:400px;margin:auto;text-align:center;font-family:sans-serif;background:#000;color:white;padding:40px;border-radius:20px;border:2px solid #0056b3;">'
     html += '<h1>AL CIELO</h1><p>MAY ROGA LLC</p><hr>'
-    # Mostrar SOLO planes de pago al público
     for pid, (p, d, n) in PLANES.items():
-        if pid != "price_1Sv6H2BOA5mT4t0PppizlRAK":  # no mostrar plan gratis
+        if pid == "price_1Sv6H2BOA5mT4t0PppizlRAK":
+            # Link gratuito solo visible para TI (no clicable para otros)
+            html += f'<div style="display:none;">{n} - ${p}</div>'
+        else:
             html += f'<a href="/checkout/{pid}" style="display:block;background:#0056b3;color:white;padding:18px;margin:15px 0;text-decoration:none;border-radius:12px;font-weight:bold;">{n} - ${p}</a>'
     html += '</div>'
     return html
 
 @app.route("/checkout/<pid>")
 def checkout(pid):
-    # El plan gratis SOLO para MAYKEL (acceso directo)
-    if pid == "price_1Sv6H2BOA5mT4t0PppizlRAK":
+    if pid == "price_1Sv6H2BOA5mT4t0PppizlRAK":  # Gratis admin
         lid = str(uuid.uuid4())[:8]
         create_license(lid, f"ADMIN_{lid}", (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S"))
         return redirect(f"/activar/{lid}")
@@ -146,6 +151,7 @@ def activar(link_id):
         if not request.json.get("legal_ok"):
             return jsonify({"error":"Consentimiento requerido"}),403
         device_id = request.json.get("device_id")
+        # Revisión mínima de hardware
         try:
             memoria = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024**3)
         except:
