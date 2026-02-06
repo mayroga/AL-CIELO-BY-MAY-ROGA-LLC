@@ -17,7 +17,7 @@ stripe.api_key = STRIPE_SECRET_KEY
 PLANES = {
     "price_1Sv5uXBOA5mT4t0PtV7RaYCa": [15.00, 10, "Plan 10 Días"],
     "price_1Sv69jBOA5mT4t0PUA7yiisS": [25.00, 28, "Plan 28 Días"],
-    "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Prueba Admin ($0.00)"]
+    "price_1Sv6H2BOA5mT4t0PppizlRAK": [0.00, 20, "Prueba Admin ($0.00)"]  # SOLO PARA MAYKEL
 }
 
 # ===================== VISOR OFFLINE =====================
@@ -53,17 +53,14 @@ async function loadOfflineRoute(){
     const res = await fetch('/get_route_data');
     if(!res.ok){ alert("Error descargando datos offline"); return; }
     const data = await res.json();
-    const bounds = data.bounds; // [southWest, northEast]
-    const route = data.route;   // Array de lat,lng
+    const bounds = data.bounds;
+    const route = data.route;
 
-    // Tiles offline
     L.tileLayer('/static/maps/tiles/{z}/{x}/{y}.png', {maxZoom:16,minZoom:6}).addTo(map);
 
-    // Ruta
     if(routeLayer) map.removeLayer(routeLayer);
     routeLayer = L.polyline(route, {color:'#00ff00', weight:5}).addTo(map);
 
-    // Centrar mapa en origen
     map.fitBounds(routeLayer.getBounds());
     tilesDownloaded = true;
 }
@@ -73,10 +70,9 @@ navigator.geolocation.watchPosition(
  pos => {
    const latlng = [pos.coords.latitude, pos.coords.longitude];
    if(routeLayer){
-     // Check si llegó al destino
      const dest = routeLayer.getLatLngs()[routeLayer.getLatLngs().length-1];
      const dist = map.distance(latlng, [dest.lat, dest.lng]);
-     if(dist < 50){ // Llegó al destino
+     if(dist < 50){
         if(confirm("¿Regresará al punto de partida? Si NO, los mapas se borrarán para ahorrar espacio.")){
            alert("Mapa guardado para regreso");
         } else {
@@ -100,7 +96,6 @@ function syncNow(){
   fetch('/get_route_data').then(()=>setTimeout(()=>{document.getElementById("status").innerText = "Actualizado. Puede apagar los datos."},3000));
 }
 
-// Cargar ruta offline al iniciar
 loadOfflineRoute();
 </script>
 </body>
@@ -112,14 +107,17 @@ loadOfflineRoute();
 def home():
     html = '<div style="max-width:400px;margin:auto;text-align:center;font-family:sans-serif;background:#000;color:white;padding:40px;border-radius:20px;border:2px solid #0056b3;">'
     html += '<h1>AL CIELO</h1><p>MAY ROGA LLC</p><hr>'
+    # Mostrar SOLO planes de pago al público
     for pid, (p, d, n) in PLANES.items():
-        html += f'<a href="/checkout/{pid}" style="display:block;background:#0056b3;color:white;padding:18px;margin:15px 0;text-decoration:none;border-radius:12px;font-weight:bold;">{n} - ${p}</a>'
+        if pid != "price_1Sv6H2BOA5mT4t0PppizlRAK":  # no mostrar plan gratis
+            html += f'<a href="/checkout/{pid}" style="display:block;background:#0056b3;color:white;padding:18px;margin:15px 0;text-decoration:none;border-radius:12px;font-weight:bold;">{n} - ${p}</a>'
     html += '</div>'
     return html
 
 @app.route("/checkout/<pid>")
 def checkout(pid):
-    if pid == "price_1Sv6H2BOA5mT4t0PppizlRAK":  # Gratis admin
+    # El plan gratis SOLO para MAYKEL (acceso directo)
+    if pid == "price_1Sv6H2BOA5mT4t0PppizlRAK":
         lid = str(uuid.uuid4())[:8]
         create_license(lid, f"ADMIN_{lid}", (datetime.utcnow() + timedelta(days=20)).strftime("%Y-%m-%d %H:%M:%S"))
         return redirect(f"/activar/{lid}")
@@ -148,7 +146,6 @@ def activar(link_id):
         if not request.json.get("legal_ok"):
             return jsonify({"error":"Consentimiento requerido"}),403
         device_id = request.json.get("device_id")
-        # Revisión mínima de hardware
         try:
             memoria = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024**3)
         except:
@@ -169,12 +166,10 @@ def viewer(link_id):
 ROUTE_FILE = "static/route.json"
 @app.route("/get_route_data")
 def get_route_data():
-    # Aquí se generaría dinámicamente JSON y tiles según origen-destino
     if os.path.exists(ROUTE_FILE):
         with open(ROUTE_FILE) as f:
             data = json.load(f)
     else:
-        # Simulación de ruta mínima
         data = {"bounds":[[21, -79],[22, -78]], "route":[[21.5,-78.9],[21.6,-78.8],[21.7,-78.7]]}
         os.makedirs("static", exist_ok=True)
         with open(ROUTE_FILE,"w") as f: json.dump(data,f)
@@ -184,7 +179,6 @@ def get_route_data():
 def delete_route_data():
     try:
         if os.path.exists(ROUTE_FILE): os.remove(ROUTE_FILE)
-        # Aquí también se podrían borrar tiles temporales
         return "Datos eliminados"
     except:
         return "Error al borrar",500
