@@ -3,24 +3,91 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AL CIELO – Consentimiento Informado</title>
+<title>AL CIELO – Navegación Offline y Legal</title>
 <style>
-body {background:#000;color:#fff;font-family:Arial;margin:0;padding:0;}
-#legal-container {max-width:900px;margin:auto;background:#000;color:#fff;padding:20px;}
-textarea {width:100%;height:320px;background:#111;color:#0f0;border:1px solid #333;padding:10px;resize:none;}
+body {background:#000;color:#fff;font-family:Arial,sans-serif;margin:0;padding:0;}
+.container {max-width:900px;margin:auto;padding:20px;}
+h1, h2 {color:#00bfff;}
+p {line-height:1.6;font-size:16px;}
+button {margin-top:20px;padding:15px;width:100%;background:#0056b3;color:white;border:none;font-size:18px;cursor:pointer;border-radius:10px;}
+textarea {width:100%;height:300px;background:#111;color:#0f0;border:1px solid #333;padding:10px;resize:none;}
 label {display:block;margin-top:15px;}
-button {margin-top:20px;padding:15px;width:100%;background:#0056b3;color:white;border:none;font-size:18px;cursor:pointer;}
+a.plan {display:block;background:#0056b3;color:white;padding:18px;margin:15px 0;text-decoration:none;border-radius:12px;font-weight:bold;text-align:center;}
 </style>
 </head>
 <body>
-<div id="legal-container">
-<h2>AL CIELO – CONSENTIMIENTO INFORMADO</h2>
+
+<div class="container">
+<h1>AL CIELO – BY MAY ROGA LLC</h1>
+<h2>Tu guía de navegación offline en Cuba</h2>
+
+<p>Bienvenido a <strong>AL CIELO</strong>, la aplicación que te permite navegar con seguridad y precisión en Cuba, incluso con teléfonos antiguos y poca memoria, sin depender de internet constante. Aquí podrás:</p>
+<ul>
+<li>Seguir rutas ya calculadas con GPS y voz en español.</li>
+<li>Ver el mapa y tu ubicación en tiempo real (puntito azul), aunque estés offline.</li>
+<li>Usar la app sin depender de conexión constante; solo necesitas internet al inicio para descargar la ruta.</li>
+<li>Ahorrar espacio: la app descarga únicamente la ruta y los tiles necesarios.</li>
+<li>Decidir si quieres guardar la ruta para el regreso o borrarla automáticamente al llegar.</li>
+</ul>
+
+<h2>Qué compras exactamente</h2>
+<p>Al adquirir uno de nuestros planes, recibes:</p>
+<ul>
+<li>Acceso a la navegación offline en la ruta que elijas.</li>
+<li>Instrucciones de voz paso a paso en español.</li>
+<li>Visualización de la ruta en mapa offline.</li>
+<li>Licencia de uso personal y única por dispositivo.</li>
+</ul>
+
+<h2>Planes disponibles</h2>
+<a href="/checkout/price_1Sv6H2BOA5mT4t0PppizlRAK" class="plan">Prueba Admin ($0.00) – 20 días</a>
+<a href="/checkout/price_1Sv5uXBOA5mT4t0PtV7RaYCa" class="plan">Plan 10 Días – $15.00</a>
+<a href="/checkout/price_1Sv69jBOA5mT4t0PUA7yiisS" class="plan">Plan 28 Días – $25.00</a>
+
+<h2>Instrucciones breves de uso</h2>
+<ol>
+<li>Selecciona tu plan y activa la licencia aceptando el consentimiento legal.</li>
+<li>Permite que la app descargue la ruta y los mapas necesarios.</li>
+<li>Cuando estés en Cuba, abre la app y sigue el GPS y las instrucciones de voz.</li>
+<li>Al llegar al destino, decide si quieres guardar la ruta para el regreso o borrarla automáticamente para liberar espacio.</li>
+</ol>
+
+<h2>Consentimiento Legal Obligatorio</h2>
+<p>Antes de usar la app, debes aceptar el siguiente consentimiento legal:</p>
 
 <textarea readonly>
 AL CIELO – BY MAY ROGA LLC
-Propiedad legal y exclusiva de MAY ROGA LLC (USA)
+Propiedad legal y exclusiva de MAY ROGA LLC (Estados Unidos)
 
-[... aquí va todo el blindaje legal que me pasaste ...]
+AL CONTINUAR Y ACCEDER A ESTA APLICACIÓN, EL USUARIO DECLARA, ACEPTA Y RECONOCE EXPRESAMENTE, BAJO JURAMENTO Y PLENA RESPONSABILIDAD LEGAL, LO SIGUIENTE:
+
+1. DECLARACIÓN DE ESTATUS LEGAL
+Declaro que soy:
+– Ciudadano de los Estados Unidos, o
+– Residente legal permanente en los Estados Unidos, o
+– Ciudadano de un país con el cual los Estados Unidos mantiene relaciones comerciales sin sanciones, embargos ni restricciones.
+Declaro expresamente que NO soy ciudadano, residente, funcionario, agente ni representante de gobiernos, entidades estatales, fuerzas armadas, fuerzas policiales, organismos de inteligencia, ni de ningún país o entidad sujeta a sanciones, restricciones o embargos impuestos por el Gobierno de los Estados Unidos.
+
+2. ALCANCE Y LIMITACIÓN DE USO
+Esta aplicación es software privado, de uso restringido y licencia limitada, destinado exclusivamente a navegación civil y lícita.
+
+3. FUNCIONAMIENTO OFFLINE Y RESPONSABILIDAD DEL USUARIO
+El sistema puede operar offline; el usuario asume toda responsabilidad de conducción, decisiones de ruta y uso de datos de GPS.
+
+4. DATOS GEOGRÁFICOS Y FUENTES DE TERCEROS
+Los mapas provienen de OpenStreetMap y fuentes abiertas; errores no son responsabilidad de MAY ROGA LLC.
+
+5. LICENCIA, DISPOSITIVOS Y CONTROL
+Licencia única por dispositivo. Uso indebido puede revocar la licencia automáticamente.
+
+6. EXONERACIÓN TOTAL DE RESPONSABILIDAD
+Renuncio a demandas, reclamos o indemnizaciones contra AL CIELO – BY MAY ROGA LLC.
+
+7. PRIVACIDAD Y SEGURIDAD
+Datos del dispositivo y ubicación pueden ser usados para control de acceso y auditoría legal.
+
+8. JURISDICCIÓN Y LEY APLICABLE
+Rige la ley de Estados Unidos. Disputas resueltas solo en tribunales competentes de EE.UU.
 </textarea>
 
 <label>
@@ -29,12 +96,13 @@ Propiedad legal y exclusiva de MAY ROGA LLC (USA)
 </label>
 
 <button onclick="activarServicio()">ACEPTO Y ENTRAR AL SISTEMA</button>
+
 </div>
 
 <script>
 async function activarServicio() {
   if(!document.getElementById("check-legal").checked){
-    alert("Debe aceptar el consentimiento informado para continuar.");
+    alert("Debe aceptar el consentimiento legal para continuar.");
     return;
   }
 
@@ -58,5 +126,6 @@ async function activarServicio() {
   }
 }
 </script>
+
 </body>
 </html>
