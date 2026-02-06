@@ -189,5 +189,13 @@ def delete_route_data():
     except:
         return "Error al borrar",500
 
+# ===================== CABECERAS DE SEGURIDAD =====================
+@app.after_request
+def add_security_headers(resp):
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    return resp
+
 if __name__=="__main__":
     app.run(host="0.0.0.0", port=10000)
